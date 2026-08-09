@@ -23,5 +23,7 @@ jobs:
           playwright install chromium
 
       - name: Run script
+        env:
+          FB_COOKIES: ${{ secrets.FB_COOKIES }}
         run: |
           python scraper.py
