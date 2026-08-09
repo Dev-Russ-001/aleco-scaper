@@ -3,7 +3,7 @@ import requests
 from playwright.sync_api import sync_playwright
 
 WEBHOOK_URL = "https://hook.eu1.make.com/ys71tgwopbgnfogxguktq3cuiftud9l9"
-FB_PAGE_URL = "https://www.facebook.com/share/1EjbKqSETH/"
+FB_PAGE_URL = "https://m.facebook.com/share/1EjbKqSETH/"
 
 def scrape_facebook():
     post_text = "Walang nakitang post."
