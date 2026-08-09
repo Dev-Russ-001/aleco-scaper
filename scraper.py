@@ -8,12 +8,11 @@ def send_to_make():
     # Dito ilalagay ang code para kunin ang pinakabagong post o advisory
     # Halimbawa ng data na ipapadala:
     payload = {
-        "substation": "Sample Substation",
-        "reason": "Emergency Maintenance",
-        "date": "2026-08-10",
-        "time_off": "01:00 PM",
-        "control_number": "00123"
-    }
+    "substation": "Daraga Substation",
+    "date": "2026-08-10",
+    "post_time": "1:04 AM"
+}
+
     
     response = requests.post(WEBHOOK_URL, json=payload)
     print(f"Status: {response.status_code}")
