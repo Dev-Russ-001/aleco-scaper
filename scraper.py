@@ -6,15 +6,18 @@ WEBHOOK_URL = "https://hook.eu1.make.com/ys71tgwopbgnfogxguktq3cuiftud9l9"
 FB_PAGE_URL = "https://www.facebook.com/share/1EjbKqSETH/"
 
 def scrape_facebook():
+    post_text = "Walang nakitang post."
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
-        
-        page.goto(FB_PAGE_URL, timeout=60000)
-        page.wait_for_timeout(5000)
-        
-        post_element = page.locator("div[data-ft]").first
-        post_text = post_element.text_content() if post_element else "Walang nakitang post."
+        try:
+            page.goto(FB_PAGE_URL, timeout=60000)
+            page.wait_for_timeout(5000)
+            
+            # Kunin ang text mula sa body ng page nang hindi nag-aabang sa sirang selector
+            post_text = page.inner_text("body")[:1500]
+        except Exception as e:
+            post_text = f"Error: {str(e)}"
         
         browser.close()
         
