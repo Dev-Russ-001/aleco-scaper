@@ -4,7 +4,6 @@ import requests
 from playwright.sync_api import sync_playwright
 
 WEBHOOK_URL = "https://hook.eu1.make.com/ys71tgwopbgnfogxguktq3cuiftud9l9"
-# Ginawang mobile version para tugma sa cookies na kinuha mo
 FB_PAGE_URL = "https://m.facebook.com/share/1EjbKqSETH/"
 COOKIES_JSON = os.environ.get("FB_COOKIES", "[]")
 
@@ -13,10 +12,14 @@ def scrape_facebook():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         
-        # Naglagay tayo ng mobile user-agent para maging tugma sa mobile cookies
+        # Gumawa ng context na may mobile user-agent
         context = browser.new_context(
-            user_agent="Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+            user_agent="Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+            viewport={"width": 360, "height": 800}
         )
+        
+        # ITAGO ANG AUTOMATION SIGNATURE (Para hindi mahalata ng Facebook na bot)
+        context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         
         try:
             cookies = json.loads(COOKIES_JSON)
@@ -28,7 +31,9 @@ def scrape_facebook():
         page = context.new_page()
         try:
             page.goto(FB_PAGE_URL, timeout=60000)
-            page.wait_for_timeout(6000)
+            page.wait_for_timeout(8000) # Dinagdagan ang hintay para mag-load nang tuluyan
+            
+            # Kunin ang mismong text ng post o page
             post_text = page.inner_text("body")[:1500]
         except Exception as e:
             post_text = f"Error: {str(e)}"
