@@ -16,7 +16,7 @@ def scrape_facebook():
             post_text = page.inner_text("body")[:1500]
         except Exception as e:
             post_text = f"Error: {str(e)}"
-        
+    
         browser.close()
         
         payload = {
