@@ -1,39 +1,25 @@
 import os
-import json
 import requests
 from playwright.sync_api import sync_playwright
 
 WEBHOOK_URL = "https://hook.eu1.make.com/ys71tgwopbgnfogxguktq3cuiftud9l9"
-FB_PAGE_URL = "https://m.facebook.com/share/1EjbKqSETH/"
-COOKIES_JSON = os.environ.get("FB_COOKIES", "[]")
+FB_PAGE_URL = "https://www.facebook.com/share/1EjbKqSETH/"
 
 def scrape_facebook():
     post_text = "Walang nakitang post."
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         
-        # Gumawa ng context na may mobile user-agent
+        # Nagpanggap tayo bilang Googlebot para lusutan ang login wall ng public page
         context = browser.new_context(
-            user_agent="Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
-            viewport={"width": 360, "height": 800}
+            user_agent="Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+            viewport={"width": 1280, "height": 800}
         )
         
-        # ITAGO ANG AUTOMATION SIGNATURE (Para hindi mahalata ng Facebook na bot)
-        context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-        
-        try:
-            cookies = json.loads(COOKIES_JSON)
-            if cookies:
-                context.add_cookies(cookies)
-        except Exception as e:
-            print(f"Error loading cookies: {e}")
-            
         page = context.new_page()
         try:
             page.goto(FB_PAGE_URL, timeout=60000)
-            page.wait_for_timeout(8000) # Dinagdagan ang hintay para mag-load nang tuluyan
-            
-            # Kunin ang mismong text ng post o page
+            page.wait_for_timeout(6000)
             post_text = page.inner_text("body")[:1500]
         except Exception as e:
             post_text = f"Error: {str(e)}"
