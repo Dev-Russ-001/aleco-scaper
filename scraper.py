@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
@@ -12,7 +13,6 @@ SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 TG_BOT_TOKEN = "8922919303:AAENx7PehTDQOoYIb2kya7L1laXDcgQtiUE"
 TG_CHAT_ID = "@AlbayPowerUpdates"
 
-# Mobile Facebook Posts URL
 FB_PAGE_URL = "https://m.facebook.com/albayelectric/posts/"
 
 def send_telegram_alert(advisory_text):
@@ -21,8 +21,7 @@ def send_telegram_alert(advisory_text):
     message = f"""⚡ALBAY POWER ADVISORY⚡
 May bago pong update sa ating mga area:
 
-📝 Detalye:
-{advisory_text}
+📝 Detalye: Power Advisory Affected Areas 
 
 🕒 Oras ng Post: {current_time_str}
 
@@ -76,23 +75,34 @@ def save_to_supabase(advisory_text):
         print(f"Error sa Supabase: {e}")
 
 def scrape_facebook_http():
-    # Mobile headers para magpanggap na legit mobile browser
     headers = {
         "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.5",
-        "Connection": "keep-alive"
     }
     
+    # I-convert ang GitHub Secret cookies (JSON format galing EditThisCookie) patungong requests cookie dict format
+    cookies_dict = {}
+    cookies_env = os.getenv("FB_COOKIES")
+    if cookies_env:
+        try:
+            cookie_list = json.loads(cookies_env)
+            for cookie in cookie_list:
+                cookies_dict[cookie['name']] = cookie['value']
+            print("Cookies successfully loaded for HTTP request!")
+        except Exception as e:
+            print(f"Error parsing cookies: {e}")
+    else:
+        print("WARNING: Walang FB_COOKIES na nahanap!")
+
     try:
-        print("Kinukuha ang page gamit ang Direct HTTP...")
-        response = requests.get(FB_PAGE_URL, headers=headers, timeout=30)
+        print("Kinukuha ang page gamit ang Direct HTTP + Cookies...")
+        response = requests.get(FB_PAGE_URL, headers=headers, cookies=cookies_dict, timeout=30)
         
         if response.status_code != 200:
             print(f"Error: HTTP status code {response.status_code}")
             return
 
-        # Parse ang HTML gamit ang BeautifulSoup
         soup = BeautifulSoup(response.text, 'html.parser')
         page_text = soup.get_text(separator='\n')
         
@@ -106,12 +116,12 @@ def scrape_facebook_http():
                     if "Log in" not in chunk and "Create new account" not in chunk:
                         cleaned_chunk = clean_facebook_text(chunk)
                         if len(cleaned_chunk) > 30:
-                            print("May nahanap na malinis na advisory sa HTTP request!")
+                            print("May nahanap na malinis na advisory!")
                             save_to_supabase(cleaned_chunk)
                             send_telegram_alert(cleaned_chunk)
                             break
         else:
-            print("Walang nahanap na advisory pattern sa direct HTTP response.")
+            print("Walang nahanap na advisory pattern. Posibleng kailangan nang i-refresh ang cookies o walang bagong post.")
             
     except Exception as e:
         print(f"HTTP Scraper Error: {e}")
