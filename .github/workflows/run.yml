@@ -19,7 +19,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install cloudscraper beautifulsoup4
+          pip install cloudscraper beautifulsoup4 requests
 
       - name: Run script
         run: |
