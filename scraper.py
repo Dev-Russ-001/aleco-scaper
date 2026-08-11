@@ -1,4 +1,3 @@
-l
 def scrape_aleco():
     # Gamitin ang cloudscraper para ligtas sa Cloudflare block
     scraper = cloudscraper.create_scraper(delay=10)
