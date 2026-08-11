@@ -1,37 +1,29 @@
-from playwright.sync_api import sync_playwright
-from playwright_stealth import stealth_sync
+import cloudscraper
 from bs4 import BeautifulSoup
-import requests
-import time
 
 TARGET_URL = "https://web.alecoinc.com.ph/index.php"
 
-def scrape():
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context()
-        page = context.new_page()
+def scrape_website():
+    # Ang cloudscraper ang bahala sa pag-solve ng Cloudflare challenge
+    scraper = cloudscraper.create_scraper(delay=10) 
+    
+    try:
+        print(f"Kinukuha ang data mula sa {TARGET_URL} gamit ang cloudscraper...")
+        response = scraper.get(TARGET_URL)
         
-        # Ito ang magic: ginagawa nating "tao" ang browser
-        stealth_sync(page)
-        
-        print("Naglo-load ng page gamit ang Stealth Browser...")
-        page.goto(TARGET_URL, wait_until="networkidle")
-        
-        # Hintayin ng konti para ma-solve ang challenge
-        time.sleep(10) 
-        
-        content = page.content()
-        soup = BeautifulSoup(content, 'html.parser')
-        text = soup.get_text(separator='\n')
-        
-        # Debug: I-print ang text para makita natin kung nakalusot na
-        print("--- CONTENT START ---")
-        print(text[:1000]) 
-        print("--- CONTENT END ---")
-        
-        # Dito mo ilalagay ang logic mo para sa Telegram/Supabase pag nakalusot na
-        browser.close()
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            text = soup.get_text(separator='\n')
+            
+            print("--- NAKUHA ANG CONTENT ---")
+            # I-print ang unang 1000 characters para makita natin kung gumana
+            print(text[:1000])
+            print("--- END OF CONTENT ---")
+        else:
+            print(f"Error: Status code {response.status_code}")
+            
+    except Exception as e:
+        print(f"Scraper Error: {e}")
 
 if __name__ == "__main__":
-    scrape()
+    scrape_website()
