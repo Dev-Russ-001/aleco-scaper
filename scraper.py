@@ -13,7 +13,8 @@ SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 TG_BOT_TOKEN = "8922919303:AAENx7PehTDQOoYIb2kya7L1laXDcgQtiUE"
 TG_CHAT_ID = "@AlbayPowerUpdates"
 
-FB_PAGE_URL = "https://www.facebook.com/share/1EjbKqSETH/"
+# Gamitin ang mobile version ng tamang page para hindi ma-block at madaling makuha ang posts
+FB_PAGE_URL = "https://m.facebook.com/albayelectric/posts/"
 
 def send_telegram_alert(advisory_text):
     url = f"https://api.telegram.org/bot{TG_BOT_TOKEN}/sendMessage"
@@ -22,7 +23,8 @@ def send_telegram_alert(advisory_text):
     message = f"""⚡ALBAY POWER ADVISORY⚡
 May bago pong update sa ating mga area:
 
-📝 Detalye:Power Advisory Affected Areas 
+📝 Detalye:
+{advisory_text}
 
 🕒 Oras ng Post: {current_time_str}
 
@@ -46,7 +48,7 @@ def clean_facebook_text(raw_text):
     lines = raw_text.split('\n')
     cleaned_lines = []
     
-    stop_words = ['All reactions', 'Like', 'Comment', 'Share', 'See more', 'Send message']
+    stop_words = ['All reactions', 'Like', 'Comment', 'Share', 'See more', 'Send message', 'Full Story']
     
     for line in lines:
         line_str = line.strip()
@@ -81,12 +83,13 @@ def save_to_supabase(advisory_text):
 def scrape_facebook():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
+        # Gagamit ng Mobile User-Agent para sa mas simpleng layout at iwas-block
         context = browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
-            viewport={"width": 1280, "height": 800}
+            user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1",
+            viewport={"width": 375, "height": 667}
         )
         
-        # I-load ang cookies mula sa GitHub Secrets para maiwasan ang Facebook login block
+        # Basahin ang cookies mula sa GitHub Secrets kung nakalagay
         cookies_env = os.getenv("FB_COOKIES")
         if cookies_env:
             try:
