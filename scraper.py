@@ -39,7 +39,7 @@ Para sa iba pang updates, bisitahin ang aming website: https://albaypowertrippin
 
 def clean_post_text(raw_text):
     # Hanapin kung saan nagsisimula ang POWER ADVISORY at hiwain mula roon pababa para mawala ang FB header
-    match = re.search(r'❗️❗️POWER ADVISORY|NGCP POWER INTERRUPTION', raw_text, re.IGNORECASE)
+    match = re.search(r'POWER ADVISORY|NGCP POWER INTERRUPTION', raw_text, re.IGNORECASE)
     if match:
         raw_text = raw_text[match.start():]
         
