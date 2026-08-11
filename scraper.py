@@ -13,7 +13,6 @@ SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 TG_BOT_TOKEN = "8922919303:AAENx7PehTDQOoYIb2kya7L1laXDcgQtiUE"
 TG_CHAT_ID = "@AlbayPowerUpdates"
 
-# Ang direktang Facebook Page Plugin URL ng Albay Electric
 PLUGIN_URL = "https://www.facebook.com/plugins/page.php?href=https%3A%2F%2Fwww.facebook.com%2Falbayelectric&tabs=timeline&width=340&height=500&small_header=false&adapt_container_width=true&hide_cover=false&show_facepile=true"
 
 def send_telegram_alert(formatted_message):
@@ -27,6 +26,20 @@ def send_telegram_alert(formatted_message):
         print(f"Telegram status: {res.status_code}")
     except Exception as e:
         print(f"Error sa Telegram: {e}")
+
+def check_if_exists(control_no):
+    url = f"{SUPABASE_URL}/rest/v1/advisories?select=substation&substation=il.*{control_no}"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}"
+    }
+    try:
+        res = requests.get(url, headers=headers)
+        if res.status_code == 200 and len(res.json()) > 0:
+            return True
+    except Exception as e:
+        print(f"Error checking Supabase: {e}")
+    return False
 
 def save_to_supabase(advisory_text):
     url = f"{SUPABASE_URL}/rest/v1/advisories"
@@ -50,7 +63,7 @@ def format_advisory(raw_text):
     substation = "Albay Area Feeder"
     reason = "Maintenance/Repair Work"
     date_val = datetime.now().strftime('%B %d, %Y')
-    control_no = f"UIAUG{datetime.now().strftime('%Y')}-001"
+    control_no = f"UIAUG{datetime.now().strftime('%Y')}-{datetime.now().strftime('%H%M%S')}"
 
     sub_match = re.search(r'SUBSTATION\s*AFFECTED\s*[:|-]\s*(.*?)(?=REASON|DATE|$)', raw_text, re.IGNORECASE | re.DOTALL)
     if sub_match:
@@ -63,8 +76,12 @@ def format_advisory(raw_text):
     date_match = re.search(r'DATE\s*[:|-]\s*(.*?)(?=\n|$)', raw_text, re.IGNORECASE)
     if date_match:
         date_val = date_match.group(1).strip()
+        
+    ctrl_match = re.search(r'(UIAUG\w+)', raw_text, re.IGNORECASE)
+    if ctrl_match:
+        control_no = ctrl_match.group(1).strip()
 
-    formatted_message = f"""‼𝙋𝙊𝙒𝙀𝙍 𝘼𝘿𝙑𝙄𝑺𝙊𝙍𝙔
+    formatted_message = f"""‼𝙋O𝙒𝙀𝙍 𝘼𝘿𝙑𝙄𝑺𝙊𝙍𝙔
 𝑺𝑼𝑩𝑺𝑻𝑨𝑻𝑰𝑶𝑵 𝑨𝑭𝑭𝑬𝑪𝑻𝑬𝑫: {substation}
 𝑹𝑬𝑨𝑺𝑶𝑵: {reason}
 𝑫𝑨𝑻𝑬: {date_val}
@@ -74,7 +91,7 @@ def format_advisory(raw_text):
 For safety purposes, please ALWAYS CONSIDER our lines as ENERGIZED.
 𝙉𝙤𝙩𝙚: An unscheduled service disruption is in effect, necessary to facilitate the coop’s ongoing technical work. We are sorry for any inconvenience caused"""
 
-    return formatted_message
+    return formatted_message, control_no
 
 def scrape_facebook_plugin():
     scraper = cloudscraper.create_scraper(delay=10)
@@ -88,18 +105,23 @@ def scrape_facebook_plugin():
             full_text = soup.get_text(separator='\n')
             
             if "POWER ADVISORY" in full_text:
-                print("May nahanap na Power Advisory!")
                 chunks = full_text.split("POWER ADVISORY")
-                if len(chunks) > 1:
-                    latest_post = "POWER ADVISORY " + chunks[1][:600]
-                    formatted = format_advisory(latest_post)
+                print(f"May nakitang {len(chunks)-1} na post sa feed.")
+                
+                # Suriin ang hanggang 3 pinakabagong post
+                limit = min(4, len(chunks))
+                for i in range(1, limit):
+                    latest_post = "POWER ADVISORY " + chunks[i][:600]
+                    formatted, ctrl_no = format_advisory(latest_post)
                     
-                    print("\n--- FORMATTED ADVISORY ---")
-                    print(formatted)
-                    print("--------------------------\n")
-                    
-                    save_to_supabase(formatted)
-                    send_telegram_alert(formatted)
+                    # I-check kung nakasulat na sa database para hindi ma-double
+                    if not check_if_exists(ctrl_no):
+                        print(f"\n[BAGONG POST NAKITA]: {ctrl_no}")
+                        print(formatted)
+                        save_to_supabase(formatted)
+                        send_telegram_alert(formatted)
+                    else:
+                        print(f"Naka-save na sa database ang post na may Control No: {ctrl_no}")
             else:
                 print("Walang kasalukuyang POWER ADVISORY sa plugin feed.")
         else:
