@@ -4,15 +4,12 @@ import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
 
-# Supabase Credentials
 SUPABASE_URL = "https://gnagimmnoutjjaifdgvq.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImduYWdpbW1ub3V0amphaWZkZ3ZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYyNTg2MzcsImV4cCI6MjEwMTgzNDYzN30.y4nlEnr9-ZRUkKn7CgQ8d6am7viNYkLB3RdELwqyXjs"
 
-# Telegram Credentials
 TG_BOT_TOKEN = "8922919303:AAENx7PehTDQOoYIb2kya7L1laXDcgQtiUE"
 TG_CHAT_ID = "@AlbayPowerUpdates"
 
-# Ang opisyal na website ng ALECO
 TARGET_URL = "https://web.alecoinc.com.ph/index.php"
 
 def send_telegram_alert(advisory_text):
@@ -21,7 +18,8 @@ def send_telegram_alert(advisory_text):
     message = f"""⚡ALBAY POWER ADVISORY⚡
 May bago pong update sa ating mga area:
 
-📝 Detalye: Power Advisory Affected Areas 
+📝 Detalye:
+{advisory_text}
 
 🕒 Oras ng Post: {current_time_str}
 
@@ -38,22 +36,31 @@ Para sa iba pang updates, bisitahin ang aming website: {TARGET_URL}"""
         print(f"Error sa Telegram: {e}")
 
 def clean_text(raw_text):
-    match = re.search(r'POWER ADVISORY|MAINTENANCE ADVISORY|INTERRUPTION', raw_text, re.IGNORECASE)
-    if match:
-        raw_text = raw_text[match.start():]
-        
     lines = raw_text.split('\n')
     cleaned_lines = []
-    stop_words = ['All reactions', 'Like', 'Comment', 'Share', 'See more', 'Send message', 'Full Story', 'Home', 'About Us']
     
+    # Mga salitang dapat balewalain dahil menu items lang ito at hindi totoong advisory
+    menu_blockers = [
+        'ERC NOTICE AND ORDER', 'CAREER OPPORTUNITIES', 'EVENTS HIGHLIGHTS', 
+        'EVENT ACTIVITY ANNOUNCEMENT', 'FEATURED EVENTS', 'PHOTO GALLERY',
+        'Home', 'About Us', 'MGA ADVISORY'
+    ]
+    
+    capturing = False
     for line in lines:
         line_str = line.strip()
-        if not line_str or line_str == '.' or line_str.isdigit():
-            continue
-        if any(word in line_str for word in stop_words) and len(cleaned_lines) > 5:
-            break
-        cleaned_lines.append(line_str)
+        
+        # Hanapin kung saan magsisimula ang totoong advisory content
+        if any(keyword in line_str.upper() for keyword in ['POWER ADVISORY', 'MAINTENANCE ADVISORY', 'SUBSTATION AFFECTED']):
+            capturing = True
             
+        if capturing:
+            # Kung menu item ang sumunod, tigilan na ang pagkuha
+            if any(blocker in line_str.upper() for blocker in menu_blockers) and len(cleaned_lines) > 3:
+                break
+            if line_str and line_str != '.' and not line_str.isdigit():
+                cleaned_lines.append(line_str)
+                
     return "\n".join(cleaned_lines)
 
 def save_to_supabase(advisory_text):
@@ -90,21 +97,15 @@ def scrape_website():
         soup = BeautifulSoup(response.text, 'html.parser')
         page_text = soup.get_text(separator='\n')
         
-        pattern = re.compile(r'POWER ADVISORY|MAINTENANCE ADVISORY|INTERRUPTION', re.IGNORECASE)
+        cleaned_chunk = clean_text(page_text)
         
-        if pattern.search(page_text):
-            lines = page_text.split('\n')
-            for i, line in enumerate(lines):
-                if pattern.search(line):
-                    chunk = "\n".join(lines[max(0, i):min(len(lines), i+30)])
-                    cleaned_chunk = clean_text(chunk)
-                    if len(cleaned_chunk) > 30:
-                        print("May nahanap na malinis na advisory sa website!")
-                        save_to_supabase(cleaned_chunk)
-                        send_telegram_alert(cleaned_chunk)
-                        break
+        if len(cleaned_chunk) > 30:
+            print("May nahanap na malinis na advisory sa website!")
+            print(cleaned_chunk)
+            save_to_supabase(cleaned_chunk)
+            send_telegram_alert(cleaned_chunk)
         else:
-            print("Walang nahanap na advisory pattern sa website.")
+            print("Walang nahanap na sapat na detalye ng advisory.")
             
     except Exception as e:
         print(f"Scraper Error: {e}")
