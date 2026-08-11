@@ -1,8 +1,7 @@
 import os
 import re
-import json
 import requests
-from playwright.sync_api import sync_playwright
+from bs4 import BeautifulSoup
 from datetime import datetime
 
 # Supabase Credentials
@@ -13,6 +12,7 @@ SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 TG_BOT_TOKEN = "8922919303:AAENx7PehTDQOoYIb2kya7L1laXDcgQtiUE"
 TG_CHAT_ID = "@AlbayPowerUpdates"
 
+# Mobile Facebook Posts URL
 FB_PAGE_URL = "https://m.facebook.com/albayelectric/posts/"
 
 def send_telegram_alert(advisory_text):
@@ -21,7 +21,8 @@ def send_telegram_alert(advisory_text):
     message = f"""⚡ALBAY POWER ADVISORY⚡
 May bago pong update sa ating mga area:
 
-📝 Detalye: Power Advisory Affected Areas 
+📝 Detalye:
+{advisory_text}
 
 🕒 Oras ng Post: {current_time_str}
 
@@ -74,58 +75,46 @@ def save_to_supabase(advisory_text):
     except Exception as e:
         print(f"Error sa Supabase: {e}")
 
-def scrape_facebook():
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context(
-            user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1",
-            viewport={"width": 375, "height": 667}
-        )
+def scrape_facebook_http():
+    # Mobile headers para magpanggap na legit mobile browser
+    headers = {
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Connection": "keep-alive"
+    }
+    
+    try:
+        print("Kinukuha ang page gamit ang Direct HTTP...")
+        response = requests.get(FB_PAGE_URL, headers=headers, timeout=30)
         
-        # IMPORTANTE: Dito nating binabasa ang cookies para makalampas sa login wall
-        cookies_env = os.getenv("FB_COOKIES")
-        if cookies_env:
-            try:
-                cookies = json.loads(cookies_env)
-                context.add_cookies(cookies)
-                print("Cookies successfully loaded!")
-            except Exception as e:
-                print(f"Error loading cookies: {e}")
-        else:
-            print("WARNING: Walang nahanap na FB_COOKIES sa GitHub Secrets!")
+        if response.status_code != 200:
+            print(f"Error: HTTP status code {response.status_code}")
+            return
 
-        page = context.new_page()
-        try:
-            page.goto(FB_PAGE_URL, timeout=60000)
-            page.wait_for_timeout(8000)
-            
-            body_text = page.inner_text("body")
-            
-            # Kung may cookies na, hindi na dapat ito mag-log in
-            if "Log in" in body_text or "Log In" in body_text:
-                print("ERROR: Naka-login wall pa rin. Baka expired na ang cookies mo.")
-            
-            pattern = re.compile(r'POWER ADVISORY|MAINTENANCE ADVISORY|INTERRUPTION', re.IGNORECASE)
-            
-            if pattern.search(body_text):
-                lines = body_text.split('\n')
-                for i, line in enumerate(lines):
-                    if pattern.search(line):
-                        chunk = "\n".join(lines[max(0, i):min(len(lines), i+30)])
-                        if "Log in" not in chunk and "Create new account" not in chunk:
-                            cleaned_chunk = clean_facebook_text(chunk)
-                            if len(cleaned_chunk) > 30:
-                                print("May nahanap na malinis na advisory!")
-                                save_to_supabase(cleaned_chunk)
-                                send_telegram_alert(cleaned_chunk)
-                                break
-            else:
-                print("Walang nahanap na advisory pattern sa text.")
-                
-        except Exception as e:
-            print(f"Scraper Error: {e}")
+        # Parse ang HTML gamit ang BeautifulSoup
+        soup = BeautifulSoup(response.text, 'html.parser')
+        page_text = soup.get_text(separator='\n')
         
-        browser.close()
+        pattern = re.compile(r'POWER ADVISORY|MAINTENANCE ADVISORY|INTERRUPTION', re.IGNORECASE)
+        
+        if pattern.search(page_text):
+            lines = page_text.split('\n')
+            for i, line in enumerate(lines):
+                if pattern.search(line):
+                    chunk = "\n".join(lines[max(0, i):min(len(lines), i+30)])
+                    if "Log in" not in chunk and "Create new account" not in chunk:
+                        cleaned_chunk = clean_facebook_text(chunk)
+                        if len(cleaned_chunk) > 30:
+                            print("May nahanap na malinis na advisory sa HTTP request!")
+                            save_to_supabase(cleaned_chunk)
+                            send_telegram_alert(cleaned_chunk)
+                            break
+        else:
+            print("Walang nahanap na advisory pattern sa direct HTTP response.")
+            
+    except Exception as e:
+        print(f"HTTP Scraper Error: {e}")
 
 if __name__ == "__main__":
-    scrape_facebook()
+    scrape_facebook_http()
