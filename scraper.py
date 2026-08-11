@@ -21,8 +21,7 @@ def send_telegram_alert(advisory_text):
     message = f"""⚡ALBAY POWER ADVISORY⚡
 May bago pong update sa ating mga area:
 
-📝 Detalye:
-{advisory_text}
+📝 Detalye: Power Advisory Affected Areas 
 
 🕒 Oras ng Post: {current_time_str}
 
