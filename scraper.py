@@ -21,7 +21,8 @@ def send_telegram_alert(advisory_text):
     message = f"""⚡ALBAY POWER ADVISORY⚡
 May bago pong update sa ating mga area:
 
-📝 Detalye: Power Advisory Affected Areas 
+📝 Detalye:
+{advisory_text}
 
 🕒 Oras ng Post: {current_time_str}
 
@@ -39,7 +40,7 @@ Para sa iba pang updates, bisitahin ang aming website: https://albaypowertrippin
 
 def clean_facebook_text(raw_text):
     # Hanapin kahit alin sa mga ito para masigurong makuha ang simula ng advisory
-    match = re.search(r'POWER ADVISORY|MAINTENANCE ADVISORY|NGCP INTERRUPTION', raw_text, re.IGNORECASE)
+    match = re.search(r'POWER ADVISORY|MAINTENANCE ADVISORY|INTERRUPTION', raw_text, re.IGNORECASE)
     if match:
         raw_text = raw_text[match.start():]
         
@@ -93,7 +94,7 @@ def scrape_facebook():
             
             body_text = page.inner_text("body")
             
-            pattern = re.compile(r'POWER ADVISORY|MAINTENANCE ADVISORY|NGCP INTERRUPTION', re.IGNORECASE)
+            pattern = re.compile(r'POWER ADVISORY|MAINTENANCE ADVISORY|INTERRUPTION', re.IGNORECASE)
             
             if pattern.search(body_text):
                 lines = body_text.split('\n')
