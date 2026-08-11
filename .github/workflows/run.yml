@@ -2,7 +2,7 @@ name: Run Scraper
 
 on:
   schedule:
-    - cron: '*/30 * * * *' # Ginawa nating 30 mins para hindi masyadong madalas
+    - cron: '*/30 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -19,8 +19,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install playwright playwright-stealth beautifulsoup4
-          playwright install chromium
+          pip install cloudscraper beautifulsoup4 requests
 
       - name: Run script
         run: |
