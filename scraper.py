@@ -3,7 +3,9 @@ import re
 import requests
 import feedparser
 import unicodedata
+from bs4 import BeautifulSoup
 from datetime import datetime
+import time
 
 # Supabase Credentials
 SUPABASE_URL = "https://gnagimmnoutjjaifdgvq.supabase.co"
@@ -49,13 +51,12 @@ def save_to_supabase(advisory_text):
     except Exception as e:
         print(f"Supabase error: {e}")
 
-def format_advisory(raw_text):
-    # Linisin at i-normalize ang unicode characters para mabasa nang maayos ng regex
+def format_advisory(raw_text, post_date_str):
     clean_text = unicodedata.normalize('NFKD', raw_text)
     
     substation = "Albay Area Feeder"
     reason = "Maintenance/Repair Work"
-    date_val = datetime.now().strftime('%B %d, %Y')
+    date_val = post_date_str  # Gagamitin na ang eksaktong Facebook post date at time
     control_no = f"EIAUG{datetime.now().strftime('%Y')}-{datetime.now().strftime('%H%M%S')}"
 
     sub_match = re.search(r'SUBSTATION\s*AFFECTED\s*[:|-]\s*(.*?)(?=REASON|DATE|$)', clean_text, re.IGNORECASE | re.DOTALL)
@@ -65,10 +66,6 @@ def format_advisory(raw_text):
     reas_match = re.search(r'REASON\s*[:|-]\s*(.*?)(?=DATE|Control|$)', clean_text, re.IGNORECASE | re.DOTALL)
     if reas_match:
         reason = reas_match.group(1).strip()
-
-    date_match = re.search(r'DATE\s*[:|-]\s*(.*?)(?=\n|Time|Control|$)', clean_text, re.IGNORECASE | re.DOTALL)
-    if date_match:
-        date_val = date_match.group(1).strip()
         
     ctrl_match = re.search(r'Control\s*Number\s*[:|-]\s*([A-Za-z0-9-]+)', clean_text, re.IGNORECASE)
     if ctrl_match:
@@ -96,13 +93,23 @@ def scrape_rss():
     print(f"May nakitang {len(feed.entries)} na post sa RSS feed.")
     
     for entry in feed.entries[:3]:
-        content = entry.get('description', '') or entry.get('summary', '')
+        raw_content = entry.get('description', '') or entry.get('summary', '')
         
-        # I-normalize ang buong content para pantay na masuri
+        # Kunin ang eksaktong petsa at oras ng pagkakapost sa Facebook mula sa RSS entry
+        published_parsed = entry.get('published_parsed')
+        if published_parsed:
+            dt = datetime(*published_parsed[:6])
+            post_date_str = dt.strftime('%B %d, %Y at %I:%M %p')
+        else:
+            post_date_str = entry.get('published', datetime.now().strftime('%B %d, %Y'))
+
+        soup_html = BeautifulSoup(raw_content, 'html.parser')
+        content = soup_html.get_text(separator='\n')
+        
         normalized_content = unicodedata.normalize('NFKD', content).upper()
         
         if "ADVISORY" in normalized_content or "SUBSTATION" in normalized_content:
-            formatted, ctrl_no = format_advisory(content)
+            formatted, ctrl_no = format_advisory(content, post_date_str)
             
             if not check_if_exists(ctrl_no):
                 print(f"\n[BAGONG ADVISORY NAKITA]: {ctrl_no}")
