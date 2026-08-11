@@ -19,7 +19,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install cloudscraper beautifulsoup4 requests
+          pip install playwright beautifulsoup4 requests
+          playwright install chromium
 
       - name: Run script
         run: |
