@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import requests
 from playwright.sync_api import sync_playwright
 from datetime import datetime
@@ -21,8 +22,7 @@ def send_telegram_alert(advisory_text):
     message = f"""⚡ALBAY POWER ADVISORY⚡
 May bago pong update sa ating mga area:
 
-📝 Detalye:
-{advisory_text}
+📝 Detalye:Power Advisory Affected Areas 
 
 🕒 Oras ng Post: {current_time_str}
 
@@ -39,7 +39,6 @@ Para sa iba pang updates, bisitahin ang aming website: https://albaypowertrippin
         print(f"Error sa Telegram: {e}")
 
 def clean_facebook_text(raw_text):
-    # Hanapin kahit alin sa mga ito para masigurong makuha ang simula ng advisory
     match = re.search(r'POWER ADVISORY|MAINTENANCE ADVISORY|INTERRUPTION', raw_text, re.IGNORECASE)
     if match:
         raw_text = raw_text[match.start():]
@@ -87,6 +86,16 @@ def scrape_facebook():
             viewport={"width": 1280, "height": 800}
         )
         
+        # I-load ang cookies mula sa GitHub Secrets para maiwasan ang Facebook login block
+        cookies_env = os.getenv("FB_COOKIES")
+        if cookies_env:
+            try:
+                cookies = json.loads(cookies_env)
+                context.add_cookies(cookies)
+                print("Cookies successfully loaded!")
+            except Exception as e:
+                print(f"Error loading cookies: {e}")
+
         page = context.new_page()
         try:
             page.goto(FB_PAGE_URL, timeout=60000)
@@ -107,7 +116,7 @@ def scrape_facebook():
                                 print("May nahanap na malinis na advisory!")
                                 save_to_supabase(cleaned_chunk)
                                 send_telegram_alert(cleaned_chunk)
-                                break # Kunin ang pinakauna at pinakabago lang tapos tapusin na
+                                break
             else:
                 print("Walang nahanap na advisory pattern sa text.")
                 
