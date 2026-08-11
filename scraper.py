@@ -69,19 +69,20 @@ def scrape_facebook():
             page.goto(FB_PAGE_URL, timeout=60000)
             page.wait_for_timeout(8000)
             
-            # Kunin ang buong text sa page para masigurong mahuhuli ang advisory
             body_text = page.inner_text("body")
             
-            pattern = re.compile(r'POWER ADVISORY|NGCP SCHEDULED POWER INTERRUPTION', re.IGNORECASE)
+            # Pinalawak na pattern para mas madaling makasalo ng mga advisory posts
+            pattern = re.compile(r'POWER ADVISORY|INTERRUPTION|MAINTENANCE|ADVISORY', re.IGNORECASE)
             
             if pattern.search(body_text):
                 lines = body_text.split('\n')
                 for i, line in enumerate(lines):
                     if pattern.search(line):
-                        # Kunin ang linya pati ang sumusunod na 20 linya para sa buong detalye
                         chunk = "\n".join(lines[max(0, i-2):min(len(lines), i+20)])
-                        post_text = chunk.strip()
-                        break
+                        # Siguraduhing hindi login wall ang nakuha
+                        if "Log in" not in chunk and "Create new account" not in chunk:
+                            post_text = chunk.strip()
+                            break
         except Exception as e:
             print(f"Scraper Error: {e}")
         
