@@ -13,12 +13,10 @@ SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 TG_BOT_TOKEN = "8922919303:AAENx7PehTDQOoYIb2kya7L1laXDcgQtiUE"
 TG_CHAT_ID = "@AlbayPowerUpdates"
 
-# Gamitin ang mobile version ng tamang page para hindi ma-block at madaling makuha ang posts
 FB_PAGE_URL = "https://m.facebook.com/albayelectric/posts/"
 
 def send_telegram_alert(advisory_text):
     url = f"https://api.telegram.org/bot{TG_BOT_TOKEN}/sendMessage"
-    
     current_time_str = datetime.now().strftime('%B %d, %Y %I:%M %p')
     message = f"""⚡ALBAY POWER ADVISORY⚡
 May bago pong update sa ating mga area:
@@ -47,17 +45,14 @@ def clean_facebook_text(raw_text):
         
     lines = raw_text.split('\n')
     cleaned_lines = []
-    
     stop_words = ['All reactions', 'Like', 'Comment', 'Share', 'See more', 'Send message', 'Full Story']
     
     for line in lines:
         line_str = line.strip()
         if not line_str or line_str == '.' or line_str.isdigit():
             continue
-            
         if any(word in line_str for word in stop_words) and len(cleaned_lines) > 5:
             break
-            
         cleaned_lines.append(line_str)
             
     return "\n".join(cleaned_lines)
@@ -83,13 +78,11 @@ def save_to_supabase(advisory_text):
 def scrape_facebook():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        # Gagamit ng Mobile User-Agent para sa mas simpleng layout at iwas-block
         context = browser.new_context(
             user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1",
             viewport={"width": 375, "height": 667}
         )
         
-        # Basahin ang cookies mula sa GitHub Secrets kung nakalagay
         cookies_env = os.getenv("FB_COOKIES")
         if cookies_env:
             try:
@@ -105,6 +98,7 @@ def scrape_facebook():
             page.wait_for_timeout(8000)
             
             body_text = page.inner_text("body")
+            print(f"DEBUG BODY TEXT (First 400 chars): {body_text[:400]}")
             
             pattern = re.compile(r'POWER ADVISORY|MAINTENANCE ADVISORY|INTERRUPTION', re.IGNORECASE)
             
