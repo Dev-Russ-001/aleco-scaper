@@ -19,8 +19,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install playwright beautifulsoup4 requests
-          playwright install chromium
+          pip install feedparser requests
 
       - name: Run script
         run: |
