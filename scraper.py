@@ -2,16 +2,63 @@ import os
 import re
 import requests
 from playwright.sync_api import sync_playwright
+from datetime import datetime
 
-WEBHOOK_URL = "https://hook.eu1.make.com/ys71tgwopbgnfogxguktq3cuiftud9l9"
+# Supabase Credentials
+SUPABASE_URL = "https://gnagimmnoutjjaifdgvq.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImduYWdpbW1ub3V0amphaWZkZ3ZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYyNTg2MzcsImV4cCI6MjEwMTgzNDYzN30.y4nlEnr9-ZRUkKn7CgQ8d6am7viNYkLB3RdELwqyXjs"
+
+# Telegram Credentials
+TG_BOT_TOKEN = "8922919303:AAENx7PehTDQOoYIb2kya7L1laXDcgQtiUE"
+TG_CHAT_ID = "@AlbayPowerUpdates"
+
 FB_PAGE_URL = "https://www.facebook.com/share/1EjbKqSETH/"
 
+def send_telegram_alert(advisory_text):
+    url = f"https://api.telegram.org/bot{TG_BOT_TOKEN}/sendMessage"
+    
+    current_time_str = datetime.now().strftime('%B %d, %Y %I:%M %p')
+    message = f"""⚡ALBAY POWER ADVISORY⚡
+May bago pong update sa ating mga area:
+
+📝 Detalye: {advisory_text}
+
+🕒 Oras ng Post: {current_time_str}
+
+Para sa iba pang updates, bisitahin ang aming website: https://albaypowertripping.oneapp.dev/"""
+
+    payload = {
+        "chat_id": TG_CHAT_ID,
+        "text": message
+    }
+    try:
+        res = requests.post(url, json=payload)
+        print(f"Telegram status: {res.status_code}")
+    except Exception as e:
+        print(f"Error sa Telegram: {e}")
+
+def save_to_supabase(advisory_text):
+    url = f"{SUPABASE_URL}/rest/v1/advisories"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal"
+    }
+    payload = {
+        "substation": advisory_text,
+        "post_time": datetime.now().isoformat()
+    }
+    try:
+        res = requests.post(url, json=payload, headers=headers)
+        print(f"Supabase save status: {res.status_code}")
+    except Exception as e:
+        print(f"Error sa Supabase: {e}")
+
 def scrape_facebook():
-    post_text = "Walang nakitang post."
+    post_text = ""
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        
-        # Nagpanggap tayo bilang Googlebot para lusutan ang login wall ng public page
         context = browser.new_context(
             user_agent="Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
             viewport={"width": 1280, "height": 800}
@@ -22,41 +69,24 @@ def scrape_facebook():
             page.goto(FB_PAGE_URL, timeout=60000)
             page.wait_for_timeout(6000)
             
-            # 1. Kunin ang mga post gamit ang article/post containers ng Facebook
             articles = page.locator('article, [role="article"], div.story_body_container').all_inner_texts()
-            
-            # RegEx para salain kung alin ang naglalaman ng dalawang klase ng advisory
             pattern = re.compile(r'POWER ADVISORY|NGCP SCHEDULED POWER INTERRUPTION', re.IGNORECASE)
             
             for text in articles:
                 if pattern.search(text):
                     post_text = text.strip()
                     break
-            
-            # 2. Fallback sakaling hindi makuha ng article selector
-            if post_text == "Walang nakitang post.":
-                body_text = page.inner_text("body")
-                lines = body_text.split('\n')
-                for i, line in enumerate(lines):
-                    if pattern.search(line):
-                        # Kunin ang linya pati na rin ang kasunod nitong mga detalye ng advisory
-                        chunk = "\n".join(lines[max(0, i-2):min(len(lines), i+15)])
-                        post_text = chunk.strip()
-                        break
-                        
         except Exception as e:
-            post_text = f"Error: {str(e)}"
+            print(f"Scraper Error: {e}")
         
         browser.close()
         
-        payload = {
-            "substation": post_text,
-            "date": "2026-08-10",
-            "postime": "Live Update"
-        }
-        
-        response = requests.post(WEBHOOK_URL, json=payload)
-        print(f"Sent status: {response.status_code}")
+        if post_text:
+            print("May nahanap na advisory!")
+            save_to_supabase(post_text)
+            send_telegram_alert(post_text)
+        else:
+            print("Walang bagong advisory na nahanap sa oras na ito.")
 
 if __name__ == "__main__":
     scrape_facebook()
