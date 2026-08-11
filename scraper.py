@@ -1,32 +1,37 @@
-import os
-import requests
+from playwright.sync_api import sync_playwright
+from playwright_stealth import stealth_sync
 from bs4 import BeautifulSoup
+import requests
+import time
 
 TARGET_URL = "https://web.alecoinc.com.ph/index.php"
 
-def scrape_website():
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
-    }
-    
-    try:
-        print(f"Kinukuha ang data mula sa {TARGET_URL}...")
-        response = requests.get(TARGET_URL, headers=headers, timeout=30)
+def scrape():
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context()
+        page = context.new_page()
         
-        if response.status_code != 200:
-            print(f"Error: HTTP status code {response.status_code}")
-            return
-
-        soup = BeautifulSoup(response.text, 'html.parser')
+        # Ito ang magic: ginagawa nating "tao" ang browser
+        stealth_sync(page)
         
-        # DEBUG: I-print ang kabuuang text para makita natin kung nasaan ang advisory
-        full_text = soup.get_text(separator='\n')
-        print("--- RAW TEXT START ---")
-        print(full_text[:1000]) # Unang 1000 characters
-        print("--- RAW TEXT END ---")
+        print("Naglo-load ng page gamit ang Stealth Browser...")
+        page.goto(TARGET_URL, wait_until="networkidle")
         
-    except Exception as e:
-        print(f"Scraper Error: {e}")
+        # Hintayin ng konti para ma-solve ang challenge
+        time.sleep(10) 
+        
+        content = page.content()
+        soup = BeautifulSoup(content, 'html.parser')
+        text = soup.get_text(separator='\n')
+        
+        # Debug: I-print ang text para makita natin kung nakalusot na
+        print("--- CONTENT START ---")
+        print(text[:1000]) 
+        print("--- CONTENT END ---")
+        
+        # Dito mo ilalagay ang logic mo para sa Telegram/Supabase pag nakalusot na
+        browser.close()
 
 if __name__ == "__main__":
-    scrape_website()
+    scrape()
