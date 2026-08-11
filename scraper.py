@@ -56,7 +56,7 @@ def save_to_supabase(advisory_text):
         print(f"Error sa Supabase: {e}")
 
 def scrape_facebook():
-    post_text = ""
+    posts_found = []
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         context = browser.new_context(
@@ -71,7 +71,6 @@ def scrape_facebook():
             
             body_text = page.inner_text("body")
             
-            # Pinalawak na pattern para mas madaling makasalo ng mga advisory posts
             pattern = re.compile(r'POWER ADVISORY|INTERRUPTION|MAINTENANCE|ADVISORY', re.IGNORECASE)
             
             if pattern.search(body_text):
@@ -79,21 +78,28 @@ def scrape_facebook():
                 for i, line in enumerate(lines):
                     if pattern.search(line):
                         chunk = "\n".join(lines[max(0, i-2):min(len(lines), i+20)])
-                        # Siguraduhing hindi login wall ang nakuha
                         if "Log in" not in chunk and "Create new account" not in chunk:
-                            post_text = chunk.strip()
-                            break
+                            cleaned_chunk = chunk.strip()
+                            # Iwasan ang mga duplicate na nakuha sa parehong post
+                            if cleaned_chunk not in posts_found:
+                                posts_found.append(cleaned_chunk)
+                                if len(posts_found) >= 10:  # Hanggang 10 posts lang muna
+                                    break
         except Exception as e:
             print(f"Scraper Error: {e}")
         
         browser.close()
         
-        if post_text:
-            print("May nahanap na advisory!")
-            save_to_supabase(post_text)
-            send_telegram_alert(post_text)
+        if posts_found:
+            print((f"May nahanap na {len(posts_found)} advisories!"))
+            # I-save lahat sa Supabase para mapuno ang site
+            for index, post in enumerate(posts_found):
+                save_to_supabase(post)
+                # I-send sa Telegram ang pinakaunang (pinakabagong) post lamang
+                if index == 0:
+                    send_telegram_alert(post)
         else:
-            print("Walang bagong advisory na nahanap sa oras na ito.")
+            print("Walang nahanap na advisory.")
 
 if __name__ == "__main__":
     scrape_facebook()
