@@ -2,6 +2,7 @@ import os
 import re
 import requests
 import feedparser
+import unicodedata
 from datetime import datetime
 
 # Supabase Credentials
@@ -49,24 +50,27 @@ def save_to_supabase(advisory_text):
         print(f"Supabase error: {e}")
 
 def format_advisory(raw_text):
+    # Linisin at i-normalize ang unicode characters para mabasa nang maayos ng regex
+    clean_text = unicodedata.normalize('NFKD', raw_text)
+    
     substation = "Albay Area Feeder"
     reason = "Maintenance/Repair Work"
     date_val = datetime.now().strftime('%B %d, %Y')
     control_no = f"EIAUG{datetime.now().strftime('%Y')}-{datetime.now().strftime('%H%M%S')}"
 
-    sub_match = re.search(r'SUBSTATION\s*AFFECTED\s*[:|-]\s*(.*?)(?=REASON|DATE|$)', raw_text, re.IGNORECASE | re.DOTALL)
+    sub_match = re.search(r'SUBSTATION\s*AFFECTED\s*[:|-]\s*(.*?)(?=REASON|DATE|$)', clean_text, re.IGNORECASE | re.DOTALL)
     if sub_match:
         substation = sub_match.group(1).strip()
 
-    reas_match = re.search(r'REASON\s*[:|-]\s*(.*?)(?=DATE|Control|$)', raw_text, re.IGNORECASE | re.DOTALL)
+    reas_match = re.search(r'REASON\s*[:|-]\s*(.*?)(?=DATE|Control|$)', clean_text, re.IGNORECASE | re.DOTALL)
     if reas_match:
         reason = reas_match.group(1).strip()
 
-    date_match = re.search(r'DATE\s*[:|-]\s*(.*?)(?=\n|Time|Control|$)', raw_text, re.IGNORECASE | re.DOTALL)
+    date_match = re.search(r'DATE\s*[:|-]\s*(.*?)(?=\n|Time|Control|$)', clean_text, re.IGNORECASE | re.DOTALL)
     if date_match:
         date_val = date_match.group(1).strip()
         
-    ctrl_match = re.search(r'Control\s*Number\s*[:|-]\s*([A-Za-z0-9-]+)', raw_text, re.IGNORECASE)
+    ctrl_match = re.search(r'Control\s*Number\s*[:|-]\s*([A-Za-z0-9-]+)', clean_text, re.IGNORECASE)
     if ctrl_match:
         control_no = ctrl_match.group(1).strip()
 
@@ -91,11 +95,13 @@ def scrape_rss():
 
     print(f"May nakitang {len(feed.entries)} na post sa RSS feed.")
     
-    # Sinusuri ang hanggang 3 pinakabagong entries
     for entry in feed.entries[:3]:
         content = entry.get('description', '') or entry.get('summary', '')
         
-        if "POWER ADVISORY" in content.upper():
+        # I-normalize ang buong content para pantay na masuri
+        normalized_content = unicodedata.normalize('NFKD', content).upper()
+        
+        if "ADVISORY" in normalized_content or "SUBSTATION" in normalized_content:
             formatted, ctrl_no = format_advisory(content)
             
             if not check_if_exists(ctrl_no):
@@ -106,7 +112,7 @@ def scrape_rss():
             else:
                 print(f"Naka-save na sa database ang post na may Control No: {ctrl_no}")
         else:
-            print("May post sa feed pero walang 'POWER ADVISORY'.")
+            print("May post sa feed pero hindi ito Power Advisory.")
 
 if __name__ == "__main__":
     scrape_rss()
