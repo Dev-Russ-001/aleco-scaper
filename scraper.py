@@ -37,36 +37,28 @@ Para sa iba pang updates, bisitahin ang aming website: https://albaypowertrippin
     except Exception as e:
         print(f"Error sa Telegram: {e}")
 
-def clean_facebook_text(raw_text):
-    # Hanapin kung saan nagsisimula ang POWER ADVISORY at hiwain mula roon pababa
-    match = re.search(r'POWER ADVISORY|MAINTENANCE ADVISORY', raw_text, re.IGNORECASE)
+def clean_post_text(raw_text):
+    # Hanapin kung saan nagsisimula ang POWER ADVISORY at hiwain mula roon pababa para mawala ang FB header
+    match = re.search(r'❗️❗️POWER ADVISORY|NGCP POWER INTERRUPTION', raw_text, re.IGNORECASE)
     if match:
         raw_text = raw_text[match.start():]
         
     lines = raw_text.split('\n')
     cleaned_lines = []
     
-    # Mga salitang tatanggalin kung masama man
-    junk_patterns = [
-        r'All reactions', r'Like', r'Comment', r'Share', r'See more', 
-        r'Albay Electric Cooperative', r'who can comment', r'1d', r'2d', r'3d', r'4d', r'5d', r'6d', r'1w',
-        r'ago', r'At', r'Pinakabagong update'
-    ]
+    # Mga salitang tatanggalin sa hulihan o gitna (mga reaksyon at share ng FB)
+    stop_words = ['All reactions', 'Like', 'Comment', 'Share', 'See more', 'Send message']
     
     for line in lines:
         line_str = line.strip()
-        # Huwag isali ang mga blangko, solong tuldok, o purong numero
-        if not line_str or line_str == '.' or line_str.isdigit():
+        if not line_str or line_str == '.':
             continue
             
-        is_junk = False
-        for pattern in junk_patterns:
-            if re.search(pattern, line_str, re.IGNORECASE):
-                is_junk = True
-                break
-                
-        if not is_junk:
-            cleaned_lines.append(line_str)
+        # Kung umabot na sa reaction parts ng post, itigil na ang pagbasa para hindi sumama ang dumi
+        if any(word in line_str for word in stop_words) and len(cleaned_lines) > 5:
+            break
+            
+        cleaned_lines.append(line_str)
             
     return "\n".join(cleaned_lines)
 
@@ -89,7 +81,6 @@ def save_to_supabase(advisory_text):
         print(f"Error sa Supabase: {e}")
 
 def scrape_facebook():
-    posts_found = []
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         context = browser.new_context(
@@ -102,34 +93,30 @@ def scrape_facebook():
             page.goto(FB_PAGE_URL, timeout=60000)
             page.wait_for_timeout(8000)
             
-            body_text = page.inner_text("body")
+            # Kunin ang bawat hiwalay na post container sa Facebook feed
+            posts = page.locator('div[role="article"]').all()
+            latest_advisory = None
             
-            pattern = re.compile(r'POWER ADVISORY|INTERRUPTION|MAINTENANCE|ADVISORY', re.IGNORECASE)
+            for post in posts:
+                post_text = post.inner_text()
+                if re.search(r'POWER ADVISORY|MAINTENANCE ADVISORY|INTERRUPTION', post_text, re.IGNORECASE):
+                    cleaned = clean_post_text(post_text)
+                    if len(cleaned) > 40: # Siguraduhing buo at may laman
+                        latest_advisory = cleaned
+                        break # Kunin lamang ang pinakabagong post at itigil na
             
-            if pattern.search(body_text):
-                lines = body_text.split('\n')
-                for i, line in enumerate(lines):
-                    if pattern.search(line):
-                        chunk = "\n".join(lines[max(0, i):min(len(lines), i+25)])
-                        if "Log in" not in chunk and "Create new account" not in chunk:
-                            cleaned_chunk = clean_facebook_text(chunk)
-                            if len(cleaned_chunk) > 30 and cleaned_chunk not in posts_found:
-                                posts_found.append(cleaned_chunk)
-                                if len(posts_found) >= 5:
-                                    break
+            if latest_advisory:
+                print("May nahanap na buo at malinis na advisory!")
+                save_to_supabase(latest_advisory)
+                send_telegram_alert(latest_advisory)
+            else:
+                print("Walang nahanap na advisory.")
+                
         except Exception as e:
             print(f"Scraper Error: {e}")
         
         browser.close()
-        
-        if posts_found:
-            print(f"May nahanap na {len(posts_found)} malinis na advisories!")
-            for index, post in enumerate(posts_found):
-                save_to_supabase(post)
-                if index == 0:
-                    send_telegram_alert(post)
-        else:
-            print("Walang nahanap na advisory.")
 
 if __name__ == "__main__":
     scrape_facebook()
+
