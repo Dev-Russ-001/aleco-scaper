@@ -37,24 +37,22 @@ Para sa iba pang updates, bisitahin ang aming website: https://albaypowertrippin
     except Exception as e:
         print(f"Error sa Telegram: {e}")
 
-def clean_post_text(raw_text):
-    # Hanapin kung saan nagsisimula ang POWER ADVISORY at hiwain mula roon pababa para mawala ang FB header
-    match = re.search(r'POWER ADVISORY|NGCP POWER INTERRUPTION', raw_text, re.IGNORECASE)
+def clean_facebook_text(raw_text):
+    # Hanapin kahit alin sa mga ito para masigurong makuha ang simula ng advisory
+    match = re.search(r'POWER ADVISORY|MAINTENANCE ADVISORY|NGCP INTERRUPTION', raw_text, re.IGNORECASE)
     if match:
         raw_text = raw_text[match.start():]
         
     lines = raw_text.split('\n')
     cleaned_lines = []
     
-    # Mga salitang tatanggalin sa hulihan o gitna (mga reaksyon at share ng FB)
     stop_words = ['All reactions', 'Like', 'Comment', 'Share', 'See more', 'Send message']
     
     for line in lines:
         line_str = line.strip()
-        if not line_str or line_str == '.':
+        if not line_str or line_str == '.' or line_str.isdigit():
             continue
             
-        # Kung umabot na sa reaction parts ng post, itigil na ang pagbasa para hindi sumama ang dumi
         if any(word in line_str for word in stop_words) and len(cleaned_lines) > 5:
             break
             
@@ -84,7 +82,7 @@ def scrape_facebook():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         context = browser.new_context(
-            user_agent="Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
             viewport={"width": 1280, "height": 800}
         )
         
@@ -93,24 +91,24 @@ def scrape_facebook():
             page.goto(FB_PAGE_URL, timeout=60000)
             page.wait_for_timeout(8000)
             
-            # Kunin ang bawat hiwalay na post container sa Facebook feed
-            posts = page.locator('div[role="article"]').all()
-            latest_advisory = None
+            body_text = page.inner_text("body")
             
-            for post in posts:
-                post_text = post.inner_text()
-                if re.search(r'POWER ADVISORY|MAINTENANCE ADVISORY|INTERRUPTION', post_text, re.IGNORECASE):
-                    cleaned = clean_post_text(post_text)
-                    if len(cleaned) > 40: # Siguraduhing buo at may laman
-                        latest_advisory = cleaned
-                        break # Kunin lamang ang pinakabagong post at itigil na
+            pattern = re.compile(r'POWER ADVISORY|MAINTENANCE ADVISORY|NGCP INTERRUPTION', re.IGNORECASE)
             
-            if latest_advisory:
-                print("May nahanap na buo at malinis na advisory!")
-                save_to_supabase(latest_advisory)
-                send_telegram_alert(latest_advisory)
+            if pattern.search(body_text):
+                lines = body_text.split('\n')
+                for i, line in enumerate(lines):
+                    if pattern.search(line):
+                        chunk = "\n".join(lines[max(0, i):min(len(lines), i+30)])
+                        if "Log in" not in chunk and "Create new account" not in chunk:
+                            cleaned_chunk = clean_facebook_text(chunk)
+                            if len(cleaned_chunk) > 30:
+                                print("May nahanap na malinis na advisory!")
+                                save_to_supabase(cleaned_chunk)
+                                send_telegram_alert(cleaned_chunk)
+                                break # Kunin ang pinakauna at pinakabago lang tapos tapusin na
             else:
-                print("Walang nahanap na advisory.")
+                print("Walang nahanap na advisory pattern sa text.")
                 
         except Exception as e:
             print(f"Scraper Error: {e}")
@@ -119,4 +117,3 @@ def scrape_facebook():
 
 if __name__ == "__main__":
     scrape_facebook()
-
