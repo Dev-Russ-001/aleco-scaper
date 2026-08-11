@@ -1,4 +1,5 @@
 import os
+import re
 import requests
 from playwright.sync_api import sync_playwright
 
@@ -20,7 +21,29 @@ def scrape_facebook():
         try:
             page.goto(FB_PAGE_URL, timeout=60000)
             page.wait_for_timeout(6000)
-            post_text = page.inner_text("body")[:1500]
+            
+            # 1. Kunin ang mga post gamit ang article/post containers ng Facebook
+            articles = page.locator('article, [role="article"], div.story_body_container').all_inner_texts()
+            
+            # RegEx para salain kung alin ang naglalaman ng dalawang klase ng advisory
+            pattern = re.compile(r'POWER ADVISORY|NGCP SCHEDULED POWER INTERRUPTION', re.IGNORECASE)
+            
+            for text in articles:
+                if pattern.search(text):
+                    post_text = text.strip()
+                    break
+            
+            # 2. Fallback sakaling hindi makuha ng article selector
+            if post_text == "Walang nakitang post.":
+                body_text = page.inner_text("body")
+                lines = body_text.split('\n')
+                for i, line in enumerate(lines):
+                    if pattern.search(line):
+                        # Kunin ang linya pati na rin ang kasunod nitong mga detalye ng advisory
+                        chunk = "\n".join(lines[max(0, i-2):min(len(lines), i+15)])
+                        post_text = chunk.strip()
+                        break
+                        
         except Exception as e:
             post_text = f"Error: {str(e)}"
         
