@@ -1,8 +1,7 @@
 import os
 import re
 import requests
-import cloudscraper
-from bs4 import BeautifulSoup
+from playwright.sync_api import sync_playwright
 from datetime import datetime
 
 # Supabase Credentials
@@ -17,12 +16,6 @@ TARGET_URL = "https://web.alecoinc.com.ph/index.php"
 
 def send_telegram_alert(formatted_message):
     url = f"https://api.telegram.org/bot{TG_BOT_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": TG_CHAT_ID,
-        "text": formatted_message,
-        "parse_mode": "Markdown" # Optional kung gagamitin ang custom unicode fonts
-    }
-    # Kung sakaling magka-issue sa Markdownparse dahil sa special unicode, pwede ring tanggalin ang parse_mode
     payload = {
         "chat_id": TG_CHAT_ID,
         "text": formatted_message
@@ -51,15 +44,14 @@ def save_to_supabase(advisory_text):
     except Exception as e:
         print(f"Error sa Supabase: {e}")
 
-def parse_advisory(raw_text):
-    # Default values kung sakaling may makaligtaan
-    substation = "N/A"
-    reason = "N/A"
+def format_advisory(raw_text):
+    substation = "Albay Area Feeder"
+    reason = "Maintenance/Repair Work"
     date_val = datetime.now().strftime('%B %d, %Y')
-    control_no = f"UI{datetime.now().strftime('%b%Y').upper()}-001"
+    control_no = f"UIAUG{datetime.now().strftime('%Y')}-001"
 
-    # Pag-extract gamit ang regex kung makita ang mga labels sa website text
-    sub_match = re.search(r'SUBSTATION\s*[:|-]\s*(.*)', raw_text, re.IGNORECASE)
+    # Pag-extract ng mga detalye mula sa post text
+    sub_match = re.search(r'SUBSTATION\s*AFFECTED\s*[:|-]\s*(.*)', raw_text, re.IGNORECASE)
     if sub_match:
         substation = sub_match.group(1).strip()
 
@@ -71,21 +63,12 @@ def parse_advisory(raw_text):
     if date_match:
         date_val = date_match.group(1).strip()
 
-    ctrl_match = re.search(r'Control\s*Number\s*[:|-]\s*(.*)', raw_text, re.IGNORECASE)
-    if ctrl_match:
-        control_no = ctrl_match.group(1).strip()
-
-    # Kung walang specific labels pero may nakuha tayong text block, gawin nating reason o substation
-    if substation == "N/A" and len(raw_text) > 20:
-        substation = "Albay Area Feeder"
-        reason = raw_text[:100]
-
-    # Eksaktong pormat na gusto mo kasama ang mga estilong Unicode fonts
-    formatted_message = f"""‼𝙋O𝙒𝙀𝙍 𝘼𝘿𝙑𝙄𝙎𝙊𝙍𝙔
+    # Eksaktong pormat na gusto mo
+    formatted_message = f"""‼𝙋𝙊𝙒𝙀𝙍 𝘼𝘿𝙑𝙄𝙎𝙊𝙍𝙔
 𝑺𝑼𝑩𝑺𝑻𝑨𝑻𝑰𝑶𝑵 𝑨𝑭𝑭𝑬𝑪𝑻𝑬𝑫: {substation}
 𝑹𝑬𝑨𝑺𝑶𝑵: {reason}
 𝑫𝑨𝑻𝑬: {date_val}
-𝘾𝙤𝙣𝙩𝙧𝙤𝙡 𝙉𝙪𝙢1𝙗𝙚𝙧: {control_no}
+𝘾𝙤𝙣𝙩𝙧𝙤𝙡 𝙉𝙪𝙢𝙗𝙚𝙧: {control_no}
 
 𝐑𝐄𝐌𝐈𝐍𝐃𝐄𝐑: All works may be finished ahead of schedule and power may be restored earlier than planned and/or announced. 
 For safety purposes, please ALWAYS CONSIDER our lines as ENERGIZED.
@@ -93,36 +76,41 @@ For safety purposes, please ALWAYS CONSIDER our lines as ENERGIZED.
 
     return formatted_message
 
-def scrape_website():
-    scraper = cloudscraper.create_scraper(delay=10)
-    
-    try:
-        print(f"Kinukuha ang data mula sa {TARGET_URL} gamit ang cloudscraper...")
-        response = scraper.get(TARGET_URL)
+def scrape_aleco():
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_context().new_page()
         
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.text, 'html.parser')
+        print(f"Binubuksan ang {TARGET_URL}...")
+        page.goto(TARGET_URL, timeout=60000)
+        
+        # Hihintayin nating mag-load ang Facebook widget iframe (mga 7 seconds)
+        print("Naghihintay na mag-load ang Facebook widget...")
+        page.wait_for_timeout(7000)
+        
+        # Kunin ang buong text na naka-render sa page kabilang ang widget
+        full_text = page.inner_text("body")
+        
+        browser.close()
+        
+        # Hanapin ang POWER ADVISORY sa loob ng nakuha nating text
+        if "POWER ADVISORY" in full_text:
+            print("May nahanap na Power Advisory sa News Feed!")
+            chunks = full_text.split("POWER ADVISORY")
             
-            found = False
-            for tag in soup.find_all(['p', 'div', 'span', 'td', 'article']):
-                text = tag.get_text(separator=' ', strip=True)
-                if any(kw in text.upper() for kw in ['POWER', 'INTERRUPTION', 'ADVISORY', 'FEEDER', 'SUBSTATION']):
-                    if len(text) > 30:
-                        final_message = parse_advisory(text)
-                        print("May nahanap na advisory, ipinapadala...")
-                        print(final_message)
-                        save_to_supabase(final_message)
-                        send_telegram_alert(final_message)
-                        found = True
-                        break
-            
-            if not found:
-                print("Walang direktang advisory block na natagpuan.")
+            # Kunin ang pinakabagong post (unang chunk pagkatapos ng split)
+            if len(chunks) > 1:
+                latest_post = "POWER ADVISORY " + chunks[1][:400] # Kunin ang unang 400 characters ng post
+                formatted = format_advisory(latest_post)
+                
+                print("\n--- FORMATTED ADVISORY ---")
+                print(formatted)
+                print("--------------------------\n")
+                
+                save_to_supabase(formatted)
+                send_telegram_alert(formatted)
         else:
-            print(f"Error: Status code {response.status_code}")
-            
-    except Exception as e:
-        print(f"Scraper Error: {e}")
+            print("Walang nakitang 'POWER ADVISORY' sa kasalukuyang news feed.")
 
 if __name__ == "__main__":
-    scrape_website()
+    scrape_aleco()
