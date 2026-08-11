@@ -14,25 +14,52 @@ TG_CHAT_ID = "@AlbayPowerUpdates"
 
 FB_PAGE_URL = "https://www.facebook.com/share/1EjbKqSETH/"
 
+def send_telegram_alert(advisory_text):
+    url = f"https://api.telegram.org/bot{TG_BOT_TOKEN}/sendMessage"
+    
+    current_time_str = datetime.now().strftime('%B %d, %Y %I:%M %p')
+    message = f"""⚡ALBAY POWER ADVISORY⚡
+May bago pong update sa ating mga area:
+
+📝 Detalye:
+{advisory_text}
+
+🕒 Oras ng Post: {current_time_str}
+
+Para sa iba pang updates, bisitahin ang aming website: https://albaypowertripping.oneapp.dev/"""
+
+    payload = {
+        "chat_id": TG_CHAT_ID,
+        "text": message
+    }
+    try:
+        res = requests.post(url, json=payload)
+        print(f"Telegram status: {res.status_code}")
+    except Exception as e:
+        print(f"Error sa Telegram: {e}")
+
 def clean_facebook_text(raw_text):
-    """Tinatanggal ang mga hindi kailangang Facebook UI elements tulad ng reactions, likes, at comments"""
+    # Hanapin kung saan nagsisimula ang POWER ADVISORY at hiwain mula roon pababa
+    match = re.search(r'POWER ADVISORY|MAINTENANCE ADVISORY', raw_text, re.IGNORECASE)
+    if match:
+        raw_text = raw_text[match.start():]
+        
     lines = raw_text.split('\n')
     cleaned_lines = []
     
-    # Mga salitang gusto nating i-filter out o alisin
+    # Mga salitang tatanggalin kung masama man
     junk_patterns = [
         r'All reactions', r'Like', r'Comment', r'Share', r'See more', 
         r'Albay Electric Cooperative', r'who can comment', r'1d', r'2d', r'3d', r'4d', r'5d', r'6d', r'1w',
-        r'ago', r'At'
+        r'ago', r'At', r'Pinakabagong update'
     ]
     
     for line in lines:
         line_str = line.strip()
-        # Huwag isali ang blangko o kaya ay purong numero lang (karaniwan ay reaction counts)
-        if not line_str or line_str.isdigit():
+        # Huwag isali ang mga blangko, solong tuldok, o purong numero
+        if not line_str or line_str == '.' or line_str.isdigit():
             continue
             
-        # Suriin kung naglalaman ng Facebook junk words
         is_junk = False
         for pattern in junk_patterns:
             if re.search(pattern, line_str, re.IGNORECASE):
@@ -84,13 +111,12 @@ def scrape_facebook():
                 lines = body_text.split('\n')
                 for i, line in enumerate(lines):
                     if pattern.search(line):
-                        chunk = "\n".join(lines[max(0, i-2):min(len(lines), i+25)])
+                        chunk = "\n".join(lines[max(0, i):min(len(lines), i+25)])
                         if "Log in" not in chunk and "Create new account" not in chunk:
-                            # Linisin ang text gamit ang ating cleanup function
                             cleaned_chunk = clean_facebook_text(chunk)
                             if len(cleaned_chunk) > 30 and cleaned_chunk not in posts_found:
                                 posts_found.append(cleaned_chunk)
-                                if len(posts_found) >= 5: # Kunin muna ang pinakabagong 5 malinis na posts
+                                if len(posts_found) >= 5:
                                     break
         except Exception as e:
             print(f"Scraper Error: {e}")
@@ -99,8 +125,10 @@ def scrape_facebook():
         
         if posts_found:
             print(f"May nahanap na {len(posts_found)} malinis na advisories!")
-            for post in posts_found:
+            for index, post in enumerate(posts_found):
                 save_to_supabase(post)
+                if index == 0:
+                    send_telegram_alert(post)
         else:
             print("Walang nahanap na advisory.")
 
