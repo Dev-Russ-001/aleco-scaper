@@ -86,7 +86,8 @@ def scrape_rss():
     print(f"Sinusuri ang mga post mula sa pinakabago...")
     
     new_posts = []
-    for entry in sorted_entries[:10]:
+    # Ginawa nating 15 para masagap nito ang hanggang 15 posts kung kailangan punuin ang database
+    for entry in sorted_entries[:15]:
         raw_content = entry.get('description', '') or entry.get('summary', '')
         
         published_parsed = entry.get('published_parsed')
@@ -106,7 +107,6 @@ def scrape_rss():
         if not content:
             continue
 
-        # Kung ang post na ito ay nasa database na, hihinto na ang buong loop
         if check_if_exists(content):
             print(f"Naka-save na sa database ang post na ito. Humihinto na sa pag-check ng mga mas lumang post.")
             break 
@@ -119,8 +119,6 @@ def scrape_rss():
                 'post_date_str': post_date_str
             })
 
-    # Kung may mga bagong post, baligtarin natin ang pagkakasunod (reversed)
-    # para ang pinakabagong post ang huling ma-send at mapunta sa pinaka-ibaba ng Telegram chat.
     if new_posts:
         for post in reversed(new_posts):
             print(f"\n[BAGONG POST NAKITA]: {post['post_date_str']}")
@@ -137,7 +135,6 @@ Para sa buong detalye, bisitahin ang website: https://albaypowertripping.oneapp.
 
             send_telegram_alert(telegram_notification)
         
-        # Linisin ang database pagkatapos mai-save lahat ng bago para laging 15 lang
         maintain_database_limit()
 
 if __name__ == "__main__":
