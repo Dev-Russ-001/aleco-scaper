@@ -37,7 +37,7 @@ def get_existing_post_times():
         print(f"Supabase fetch times error: {e}")
     return []
 
-def save_to_supabase(advisory_text, post_datetime):
+def save_to_supabase(advisory_text, post_datetime, image_url):
     url = f"{SUPABASE_URL}/rest/v1/advisories"
     headers = {
         "apikey": SUPABASE_KEY,
@@ -45,7 +45,12 @@ def save_to_supabase(advisory_text, post_datetime):
         "Content-Type": "application/json",
         "Prefer": "return=minimal"
     }
-    payload = {"substation": advisory_text, "post_time": post_datetime}
+    # Isinama na natin ang image_url dito
+    payload = {
+        "substation": advisory_text, 
+        "post_time": post_datetime,
+        "image_url": image_url
+    }
     try:
         requests.post(url, json=payload, headers=headers)
     except Exception as e:
@@ -78,10 +83,8 @@ def scrape_rss():
         print("Walang nahanap na entries sa RSS feed o mali ang link.")
         return
 
-    # Kunin ang mga existing timestamps sa Supabase
     existing_times = get_existing_post_times()
 
-    # Awtomatikong inaayos mula sa pinakabago hanggang pinakaluma base sa petsa
     sorted_entries = sorted(
         feed.entries, 
         key=lambda x: x.get('published_parsed') or (9999, 12, 31, 23, 59, 59, 0, 0, 0), 
@@ -106,29 +109,34 @@ def scrape_rss():
             iso_post_time = dt.isoformat()
 
         soup_html = BeautifulSoup(raw_content, 'html.parser')
+        
+        # Kunin ang Image URL mula sa post kung mayroon man
+        img_tag = soup_html.find('img')
+        image_url = img_tag['src'] if img_tag and img_tag.has_attr('src') else None
+
         content = soup_html.get_text(separator='\n').strip()
         
-        if not content:
+        if not content and not image_url:
             continue
 
-        # Suriin kung ang eksaktong timestamp na ito ay nasa database na
         if iso_post_time in existing_times:
             print(f"-> Na-save na ang post na may oras na {post_date_str}. Humihinto na sa pag-check.")
             break 
         else:
-            print(f"-> BAGONG POST NAKITA: {post_date_str}")
+            print(f"-> BAGONG POST NAKITA: {post_date_str} (May larawan: {'Oo' if image_url else 'Wala'})")
             full_card_message = f"{content}\n\n🕒 Posted on: {post_date_str}"
             new_posts.append({
                 'content': content,
                 'full_card_message': full_card_message,
                 'iso_post_time': iso_post_time,
-                'post_date_str': post_date_str
+                'post_date_str': post_date_str,
+                'image_url': image_url
             })
 
     if new_posts:
         print(f"\nMay kabuuang {len(new_posts)} bagong post ang idadagdag.")
         for post in reversed(new_posts):
-            save_to_supabase(post['full_card_message'], post['iso_post_time'])
+            save_to_supabase(post['full_card_message'], post['iso_post_time'], post['image_url'])
             
             telegram_notification = f"""⚡ALBAY UPDATE⚡
 May bago pong post sa page:
