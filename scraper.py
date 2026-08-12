@@ -92,9 +92,9 @@ def scrape_rss():
         telegram_notification = f"""⚡ALBAY UPDATE⚡
 May bago pong post sa page:
 
-📝 {snippet}
-
 🕒 Oras: {post_date_str}
+
+📝 Detalye: Power Advisory Tripping - Date, Time and  Affected Areas. 
 
 Para sa buong detalye, bisitahin ang website: https://albaypowertripping.oneapp.dev/"""
 
