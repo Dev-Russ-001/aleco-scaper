@@ -5,7 +5,6 @@ import feedparser
 import unicodedata
 from bs4 import BeautifulSoup
 from datetime import datetime
-import time
 
 # Supabase Credentials
 SUPABASE_URL = "https://gnagimmnoutjjaifdgvq.supabase.co"
@@ -71,7 +70,8 @@ def format_advisory(raw_text, post_date_str):
     if ctrl_match:
         control_no = ctrl_match.group(1).strip()
 
-    formatted_message = f"""‼𝙋O𝙒𝙀𝙍 𝘼𝘿𝙑𝙄𝑺𝙊𝙍𝙔
+    # Buong card para sa Supabase / website mo
+    full_card_message = f"""‼𝙋O𝙒𝙀𝙍 𝘼𝘿𝙑𝙄𝑺𝙊𝙍𝙔
 𝑺𝑼𝑩𝑺𝑻𝑨𝑻𝑰𝑶𝑵 𝑨𝑭𝑭𝑬𝑪𝑻𝑬𝑫: {substation}
 𝑹𝑬𝑨𝑺𝑶𝑵: {reason}
 𝑫𝑨𝑻𝑬: {date_val}
@@ -80,7 +80,18 @@ def format_advisory(raw_text, post_date_str):
 𝐑𝐄𝐌𝐈𝐍𝐃𝐄𝐑: All works may be finished ahead of schedule and power may be restored earlier than planned and/or announced. 
 For safety purposes, please ALWAYS CONSIDER our lines as ENERGIZED.
 𝙉𝙤𝙩𝙚: An unscheduled service disruption is in effect, necessary to facilitate the coop’s ongoing technical work. We are sorry for any inconvenience caused"""
-    return formatted_message, control_no
+
+    # Maikling format para sa Telegram notif
+    telegram_notification = f"""⚡ALBAY POWER ADVISORY⚡
+May bago pong update sa ating mga area:
+
+📝 Detalye: {substation} - {reason}
+
+🕒 Oras ng Post: "{date_val}"
+
+Para sa iba pang updates, bisitahin ang aming website: https://albaypowertripping.oneapp.dev/"""
+
+    return full_card_message, telegram_notification, control_no
 
 def scrape_rss():
     print("Binabasa at ino-order ang RSS feed...")
@@ -90,7 +101,7 @@ def scrape_rss():
         print("Walang nahanap na entries sa RSS feed o mali ang link.")
         return
 
-    # I-sort ang entries mula pinakabago hanggang pinakaluma base sa published date
+    # I-sort ang entries mula pinakabago hanggang pinakaluma (Latest to Oldest)
     sorted_entries = sorted(
         feed.entries, 
         key=lambda x: x.get('published_parsed', (0,0,0,0,0,0)), 
@@ -102,7 +113,7 @@ def scrape_rss():
     for entry in sorted_entries[:3]:
         raw_content = entry.get('description', '') or entry.get('summary', '')
         
-        # Kunin ang petsa at oras ng pagkakapost sa Facebook
+        # Kunin ang petsa at oras kung kailan ipinost sa Facebook
         published_parsed = entry.get('published_parsed')
         if published_parsed:
             dt = datetime(*published_parsed[:6])
@@ -116,13 +127,12 @@ def scrape_rss():
         normalized_content = unicodedata.normalize('NFKD', content).upper()
         
         if "ADVISORY" in normalized_content or "SUBSTATION" in normalized_content:
-            formatted, ctrl_no = format_advisory(content, post_date_str)
+            full_card, tg_notif, ctrl_no = format_advisory(content, post_date_str)
             
             if not check_if_exists(ctrl_no):
                 print(f"\n[BAGONG ADVISORY NAKITA]: {ctrl_no}")
-                print(formatted)
-                save_to_supabase(formatted)
-                send_telegram_alert(formatted)
+                save_to_supabase(full_card)
+                send_telegram_alert(tg_notif)
             else:
                 print(f"Naka-save na sa database ang post na may Control No: {ctrl_no}")
         else:
