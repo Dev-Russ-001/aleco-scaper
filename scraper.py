@@ -3,6 +3,7 @@ import requests
 import feedparser
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
+import urllib.parse
 
 # Supabase Credentials
 SUPABASE_URL = "https://gnagimmnoutjjaifdgvq.supabase.co"
@@ -12,8 +13,8 @@ SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 TG_BOT_TOKEN = "8922919303:AAENx7PehTDQOoYIb2kya7L1laXDcgQtiUE"
 TG_CHAT_ID = "@AlbayPowerUpdates"
 
-# Ang iyong FetchRSS Feed Link
-RSS_URL = "https://fetchrss.com/feed/1wtymnCAaBLm1wtykE9vm6U6.rss"
+# Ang iyong RSS Feed Link
+RSS_URL = "https://rss.app/feeds/XHUW4sV40A2meINV.xml"
 
 def send_telegram_alert(formatted_message):
     url = f"https://api.telegram.org/bot{TG_BOT_TOKEN}/sendMessage"
@@ -23,21 +24,17 @@ def send_telegram_alert(formatted_message):
     except Exception as e:
         print(f"Telegram error: {e}")
 
-def get_existing_posts():
-    """Kinukuha ang lahat ng nakasulat sa database para masuri natin nang diretso."""
-    url = f"{SUPABASE_URL}/rest/v1/advisories?select=substation"
+def check_if_exists(content_snippet):
+    encoded_snippet = urllib.parse.quote(content_snippet[:50])
+    url = f"{SUPABASE_URL}/rest/v1/advisories?select=substation&substation=il.*{encoded_snippet}"
     headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
     try:
         res = requests.get(url, headers=headers)
-        if res.status_code == 200:
-            posts = [row.get('substation', '') for row in res.json()]
-            print(f"Tagumpay na nakuha ang {len(posts)} na post mula sa Supabase database.")
-            return posts
-        else:
-            print(f"Supabase fetch error status code: {res.status_code}, response: {res.text}")
+        if res.status_code == 200 and len(res.json()) > 0:
+            return True
     except Exception as e:
-        print(f"Supabase fetch connection error: {e}")
-    return []
+        print(f"Supabase check error: {e}")
+    return False
 
 def save_to_supabase(advisory_text, post_datetime):
     url = f"{SUPABASE_URL}/rest/v1/advisories"
@@ -49,9 +46,7 @@ def save_to_supabase(advisory_text, post_datetime):
     }
     payload = {"substation": advisory_text, "post_time": post_datetime}
     try:
-        res = requests.post(url, json=payload, headers=headers)
-        if res.status_code not in [200, 201]:
-            print(f"Save error response: {res.text}")
+        requests.post(url, json=payload, headers=headers)
     except Exception as e:
         print(f"Supabase error: {e}")
 
@@ -75,26 +70,23 @@ def maintain_database_limit():
         print(f"Error maintaining limit: {e}")
 
 def scrape_rss():
-    print("Binabasa ang FetchRSS feed...")
+    print("Binabasa ang RSS feed...")
     feed = feedparser.parse(RSS_URL)
     
     if not feed.entries:
         print("Walang nahanap na entries sa RSS feed o mali ang link.")
         return
 
-    # Kunin muna ang mga kasalukuyang nakatabi sa Supabase
-    existing_records = get_existing_posts()
-
-    # Awtomatikong inaayos mula sa pinakabago hanggang pinakaluma
     sorted_entries = sorted(
         feed.entries, 
-        key=lambda x: x.get('published_parsed') or (9999, 12, 31, 23, 59, 59, 0, 0, 0), 
+        key=lambda x: x.get('published_parsed', (0,0,0,0,0,0)), 
         reverse=True
     )
 
     print(f"Sinusuri ang mga post mula sa pinakabago...")
     
     new_posts = []
+    # Ginawa nating 15 para masagap nito ang hanggang 15 posts kung kailangan punuin ang database
     for entry in sorted_entries[:15]:
         raw_content = entry.get('description', '') or entry.get('summary', '')
         
@@ -115,15 +107,10 @@ def scrape_rss():
         if not content:
             continue
 
-        # Kunin ang unang 30 characters para mas sigurado ang pag-match
-        snippet = content[:30]
-        already_exists = any(snippet in db_text for db_text in existing_records)
-
-        if already_exists:
-            print(f"-> Naka-save na sa database (Matched: '{snippet}...'). Humihinto na sa pag-check.")
+        if check_if_exists(content):
+            print(f"Naka-save na sa database ang post na ito. Humihinto na sa pag-check ng mga mas lumang post.")
             break 
         else:
-            print(f"-> BAGONG POST NAKITA: '{snippet}...'")
             full_card_message = f"{content}\n\n🕒 Oras ng Post: {post_date_str}"
             new_posts.append({
                 'content': content,
@@ -133,8 +120,8 @@ def scrape_rss():
             })
 
     if new_posts:
-        print(f"\nMay kabuuang {len(new_posts)} bagong post ang idadagdag.")
         for post in reversed(new_posts):
+            print(f"\n[BAGONG POST NAKITA]: {post['post_date_str']}")
             save_to_supabase(post['full_card_message'], post['iso_post_time'])
             
             telegram_notification = f"""⚡ALBAY UPDATE⚡
@@ -149,8 +136,6 @@ Para sa buong detalye, bisitahin ang website: https://albaypowertripping.oneapp.
             send_telegram_alert(telegram_notification)
         
         maintain_database_limit()
-    else:
-        print("Walang bagong post na nakita. Up-to-date na ang database.")
 
 if __name__ == "__main__":
     scrape_rss()
