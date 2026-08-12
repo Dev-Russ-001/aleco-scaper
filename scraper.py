@@ -117,7 +117,7 @@ def scrape_rss():
             break 
         else:
             print(f"-> BAGONG POST NAKITA: {post_date_str}")
-            full_card_message = f"{content}\n\n🕒 Oras ng Post: {post_date_str}"
+            full_card_message = f"{content}\n\n🕒 Posted on: {post_date_str}"
             new_posts.append({
                 'content': content,
                 'full_card_message': full_card_message,
