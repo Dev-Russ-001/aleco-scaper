@@ -24,14 +24,14 @@ def send_telegram_alert(formatted_message):
         print(f"Telegram error: {e}")
 
 def get_existing_post_times():
-    """Kinukuha ang lahat ng post_time mula sa Supabase para masuri ang mga oras."""
-    url = f"{SUPABASE_URL}/rest/v1/advisories?select=post_time"
+    """Kinukuha ang lahat ng post_time mula sa Supabase."""
+    url = f"{SUPABASE_URL}/rest/v1/advisories?select=post_time&order=post_time.desc"
     headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
     try:
         res = requests.get(url, headers=headers)
         if res.status_code == 200:
             times = [row.get('post_time') for row in res.json()]
-            print(f"Nakuha ang {len(times)} na existing timestamps mula sa Supabase.")
+            print(f"Supabase Timestamps ({len(times)} total): {times}")
             return times
     except Exception as e:
         print(f"Supabase fetch times error: {e}")
@@ -47,22 +47,23 @@ def save_to_supabase(advisory_text, post_datetime):
     }
     payload = {"substation": advisory_text, "post_time": post_datetime}
     try:
-        requests.post(url, json=payload, headers=headers)
+        res = requests.post(url, json=payload, headers=headers)
+        if res.status_code in [200, 201]:
+            print(f"Matagumpay na nai-save sa Supabase: {post_datetime}")
+        else:
+            print(f"Save error: {res.text}")
     except Exception as e:
         print(f"Supabase error: {e}")
 
 def maintain_database_limit():
-    """Sinisiguro na laging 15 posts lang ang maximum na nakalagay sa database/site."""
     headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
     url = f"{SUPABASE_URL}/rest/v1/advisories?select=id&order=post_time.asc"
-    
     try:
         res = requests.get(url, headers=headers)
         if res.status_code == 200:
             data = res.json()
             if len(data) > 15:
                 excess = len(data) - 15
-                print(f"Database limit exceeded. Deleting {excess} oldest post(s)...")
                 for i in range(excess):
                     oldest_id = data[i]['id']
                     delete_url = f"{SUPABASE_URL}/rest/v1/advisories?id=eq.{oldest_id}"
@@ -78,20 +79,18 @@ def scrape_rss():
         print("Walang nahanap na entries sa RSS feed o mali ang link.")
         return
 
-    # Kunin ang mga existing timestamps sa Supabase
     existing_times = get_existing_post_times()
 
-    # Awtomatikong inaayos mula sa pinakabago hanggang pinakaluma base sa petsa
     sorted_entries = sorted(
         feed.entries, 
         key=lambda x: x.get('published_parsed') or (9999, 12, 31, 23, 59, 59, 0, 0, 0), 
         reverse=True
     )
 
-    print(f"Sinusuri ang mga post batay sa oras (timestamp)...")
+    print(f"Sinusuri ang RSS entries...")
     
     new_posts = []
-    for entry in sorted_entries[:15]:
+    for i, entry in enumerate(sorted_entries[:5]): # Silipin natin ang unang 5 entries
         raw_content = entry.get('description', '') or entry.get('summary', '')
         
         published_parsed = entry.get('published_parsed')
@@ -105,18 +104,19 @@ def scrape_rss():
             post_date_str = dt.strftime('%B %d, %Y at %I:%M %p')
             iso_post_time = dt.isoformat()
 
+        print(f"RSS Entry #{i+1} Timestamp computed: {iso_post_time} ({post_date_str})")
+
         soup_html = BeautifulSoup(raw_content, 'html.parser')
         content = soup_html.get_text(separator='\n').strip()
         
         if not content:
             continue
 
-        # Suriin kung ang eksaktong timestamp na ito ay nasa database na
         if iso_post_time in existing_times:
-            print(f"-> Na-save na ang post na may oras na {post_date_str}. Humihinto na sa pag-check.")
+            print(f"-> MATCH FOUND! Ang timestamp na ito ay nasa Supabase pa rin. Tumitigil.")
             break 
         else:
-            print(f"-> BAGONG POST NAKITA: {post_date_str}")
+            print(f"-> WALang MATCH! Itinuturing na BAGONG POST ito: {post_date_str}")
             full_card_message = f"{content}\n\n🕒 Oras ng Post: {post_date_str}"
             new_posts.append({
                 'content': content,
@@ -126,7 +126,7 @@ def scrape_rss():
             })
 
     if new_posts:
-        print(f"\nMay kabuuang {len(new_posts)} bagong post ang idadagdag.")
+        print(f"\nMay {len(new_posts)} bagong post na idadagdag.")
         for post in reversed(new_posts):
             save_to_supabase(post['full_card_message'], post['iso_post_time'])
             
@@ -143,7 +143,7 @@ Para sa buong detalye, bisitahin ang website: https://albaypowertripping.oneapp.
         
         maintain_database_limit()
     else:
-        print("Walang bagong post na nakita. Up-to-date na ang database.")
+        print("Walang bagong post na nakita.")
 
 if __name__ == "__main__":
     scrape_rss()
