@@ -1,10 +1,10 @@
 import os
-import re
 import requests
 import feedparser
 import unicodedata
 from bs4 import BeautifulSoup
 from datetime import datetime
+import urllib.parse
 
 # Supabase Credentials
 SUPABASE_URL = "https://gnagimmnoutjjaifdgvq.supabase.co"
@@ -25,8 +25,10 @@ def send_telegram_alert(formatted_message):
     except Exception as e:
         print(f"Telegram error: {e}")
 
-def check_if_exists(control_no):
-    url = f"{SUPABASE_URL}/rest/v1/advisories?select=substation&substation=il.*{control_no}"
+def check_if_exists(content_snippet):
+    # I-check kung naka-save na sa database ang unang bahagi ng post para maiwasan ang duplicate
+    encoded_snippet = urllib.parse.quote(content_snippet[:50])
+    url = f"{SUPABASE_URL}/rest/v1/advisories?select=substation&substation=il.*{encoded_snippet}"
     headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
     try:
         res = requests.get(url, headers=headers)
@@ -50,70 +52,27 @@ def save_to_supabase(advisory_text):
     except Exception as e:
         print(f"Supabase error: {e}")
 
-def format_advisory(raw_text, post_date_str):
-    clean_text = unicodedata.normalize('NFKD', raw_text)
-    
-    substation = "Albay Area Feeder"
-    reason = "Maintenance/Repair Work"
-    date_val = post_date_str  # Eksaktong Facebook post date at time
-    control_no = f"EIAUG{datetime.now().strftime('%Y')}-{datetime.now().strftime('%H%M%S')}"
-
-    sub_match = re.search(r'SUBSTATION\s*AFFECTED\s*[:|-]\s*(.*?)(?=REASON|DATE|$)', clean_text, re.IGNORECASE | re.DOTALL)
-    if sub_match:
-        substation = sub_match.group(1).strip()
-
-    reas_match = re.search(r'REASON\s*[:|-]\s*(.*?)(?=DATE|Control|$)', clean_text, re.IGNORECASE | re.DOTALL)
-    if reas_match:
-        reason = reas_match.group(1).strip()
-        
-    ctrl_match = re.search(r'Control\s*Number\s*[:|-]\s*([A-Za-z0-9-]+)', clean_text, re.IGNORECASE)
-    if ctrl_match:
-        control_no = ctrl_match.group(1).strip()
-
-    # Buong card para sa Supabase / website mo
-    full_card_message = f"""‼𝙋O𝙒𝙀𝙍 𝘼𝘿𝙑𝙄𝑺𝙊𝙍𝙔
-𝑺𝑼𝑩𝑺𝑻𝑨𝑻𝑰𝑶𝑵 𝑨𝑭𝑭𝑬𝑪𝑻𝑬𝑫: {substation}
-𝑹𝑬𝑨𝑺𝑶𝑵: {reason}
-𝑫𝑨𝑻𝑬: {date_val}
-𝘾𝙤𝙣𝙩𝙧𝙤𝙡 𝙉𝙪𝙢𝙗𝙚𝙧: {control_no}
-
-𝐑𝐄𝐌𝐈𝐍𝐃𝐄𝐑: All works may be finished ahead of schedule and power may be restored earlier than planned and/or announced. 
-For safety purposes, please ALWAYS CONSIDER our lines as ENERGIZED.
-𝙉𝙤𝙩𝙚: An unscheduled service disruption is in effect, necessary to facilitate the coop’s ongoing technical work. We are sorry for any inconvenience caused"""
-
-    # Maikling format para sa Telegram notif
-    telegram_notification = f"""⚡ALBAY POWER ADVISORY⚡
-May bago pong update sa ating mga area:
-
-📝 Detalye: {substation} - {reason}
-
-🕒 Oras ng Post: "{date_val}"
-
-Para sa iba pang updates, bisitahin ang aming website: https://albaypowertripping.oneapp.dev/"""
-
-    return full_card_message, telegram_notification, control_no
-
 def scrape_rss():
-    print("Binabasa at ino-order ang RSS feed...")
+    print("Binabasa at ino-order ang RSS feed (Lahat ng post)...")
     feed = feedparser.parse(RSS_URL)
     
     if not feed.entries:
         print("Walang nahanap na entries sa RSS feed o mali ang link.")
         return
 
-    # I-sort ang entries mula pinakabago hanggang pinakaluma (Latest to Oldest)
+    # I-sort ang entries mula pinakabago hanggang pinakaluma
     sorted_entries = sorted(
         feed.entries, 
         key=lambda x: x.get('published_parsed', (0,0,0,0,0,0)), 
         reverse=True
     )
 
-    print(f"May nakitang {len(sorted_entries)} na post sa RSS feed (sorted).")
+    print(f"May nakitang {len(sorted_entries)} na post sa RSS feed.")
     
-    for entry in sorted_entries[:3]:
+    # Suriin ang mga pinakabagong post
+    for entry in sorted_entries[:5]:
         raw_content = entry.get('description', '') or entry.get('summary', '')
         
-        # Kunin ang petsa at oras kung kailan ipinost sa Facebook
         published_parsed = entry.get('published_parsed')
         if published_parsed:
             dt = datetime(*published_parsed[:6])
@@ -122,21 +81,31 @@ def scrape_rss():
             post_date_str = entry.get('published', datetime.now().strftime('%B %d, %Y'))
 
         soup_html = BeautifulSoup(raw_content, 'html.parser')
-        content = soup_html.get_text(separator='\n')
+        content = soup_html.get_text(separator='\n').strip()
         
-        normalized_content = unicodedata.normalize('NFKD', content).upper()
-        
-        if "ADVISORY" in normalized_content or "SUBSTATION" in normalized_content:
-            full_card, tg_notif, ctrl_no = format_advisory(content, post_date_str)
-            
-            if not check_if_exists(ctrl_no):
-                print(f"\n[BAGONG ADVISORY NAKITA]: {ctrl_no}")
-                save_to_supabase(full_card)
-                send_telegram_alert(tg_notif)
-            else:
-                print(f"Naka-save na sa database ang post na may Control No: {ctrl_no}")
+        if not content:
+            continue
+
+        # Buong nilalaman ng post na isasave sa website/Supabase
+        full_card_message = f"{content}\n\n🕒 Oras ng Post: {post_date_str}"
+
+        # Maikling snippet para sa Telegram notification
+        snippet = content[:120] + "..." if len(content) > 120 else content
+        telegram_notification = f"""⚡ALBAY UPDATE⚡
+May bago pong post sa page:
+
+📝 {snippet}
+
+🕒 Oras: {post_date_str}
+
+Para sa buong detalye, bisitahin ang website: https://albaypowertripping.oneapp.dev/"""
+
+        if not check_if_exists(content):
+            print(f"\n[BAGONG POST NAKITA]: {post_date_str}")
+            save_to_supabase(full_card_message)
+            send_telegram_alert(telegram_notification)
         else:
-            print("May post sa feed pero hindi ito Power Advisory.")
+            print(f"Naka-save na sa database ang post na ito.")
 
 if __name__ == "__main__":
     scrape_rss()
