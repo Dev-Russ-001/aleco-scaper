@@ -87,7 +87,7 @@ def scrape_rss():
 
     print(f"May nakitang {len(sorted_entries)} na post sa RSS feed.")
     
-    for entry in sorted_entries[:10]:
+    for entry in sorted_entries[:15]:
         raw_content = entry.get('description', '') or entry.get('summary', '')
         
         published_parsed = entry.get('published_parsed')
