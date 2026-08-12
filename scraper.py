@@ -1,7 +1,6 @@
 import os
 import requests
 import feedparser
-import unicodedata
 from bs4 import BeautifulSoup
 from datetime import datetime
 import urllib.parse
@@ -26,7 +25,6 @@ def send_telegram_alert(formatted_message):
         print(f"Telegram error: {e}")
 
 def check_if_exists(content_snippet):
-    # I-check kung naka-save na sa database ang unang bahagi ng post para maiwasan ang duplicate
     encoded_snippet = urllib.parse.quote(content_snippet[:50])
     url = f"{SUPABASE_URL}/rest/v1/advisories?select=substation&substation=il.*{encoded_snippet}"
     headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
@@ -38,7 +36,7 @@ def check_if_exists(content_snippet):
         print(f"Supabase check error: {e}")
     return False
 
-def save_to_supabase(advisory_text):
+def save_to_supabase(advisory_text, post_datetime):
     url = f"{SUPABASE_URL}/rest/v1/advisories"
     headers = {
         "apikey": SUPABASE_KEY,
@@ -46,21 +44,22 @@ def save_to_supabase(advisory_text):
         "Content-Type": "application/json",
         "Prefer": "return=minimal"
     }
-    payload = {"substation": advisory_text, "post_time": datetime.now().isoformat()}
+    # Gagamitin na ang totoong Facebook post date para sa tamang sorting sa database at site
+    payload = {"substation": advisory_text, "post_time": post_datetime}
     try:
         requests.post(url, json=payload, headers=headers)
     except Exception as e:
         print(f"Supabase error: {e}")
 
 def scrape_rss():
-    print("Binabasa at ino-order ang RSS feed (Lahat ng post)...")
+    print("Binabasa at ino-order ang RSS feed...")
     feed = feedparser.parse(RSS_URL)
     
     if not feed.entries:
         print("Walang nahanap na entries sa RSS feed o mali ang link.")
         return
 
-    # I-sort ang entries mula pinakabago hanggang pinakaluma
+    # I-sort ang entries mula pinakabago hanggang pinakaluma base sa RSS published date
     sorted_entries = sorted(
         feed.entries, 
         key=lambda x: x.get('published_parsed', (0,0,0,0,0,0)), 
@@ -69,7 +68,6 @@ def scrape_rss():
 
     print(f"May nakitang {len(sorted_entries)} na post sa RSS feed.")
     
-    # Suriin ang mga pinakabagong post
     for entry in sorted_entries[:5]:
         raw_content = entry.get('description', '') or entry.get('summary', '')
         
@@ -77,8 +75,10 @@ def scrape_rss():
         if published_parsed:
             dt = datetime(*published_parsed[:6])
             post_date_str = dt.strftime('%B %d, %Y at %I:%M %p')
+            iso_post_time = dt.isoformat()  # Totoong oras ng pagkakapost sa FB
         else:
             post_date_str = entry.get('published', datetime.now().strftime('%B %d, %Y'))
+            iso_post_time = datetime.now().isoformat()
 
         soup_html = BeautifulSoup(raw_content, 'html.parser')
         content = soup_html.get_text(separator='\n').strip()
@@ -86,10 +86,8 @@ def scrape_rss():
         if not content:
             continue
 
-        # Buong nilalaman ng post na isasave sa website/Supabase
         full_card_message = f"{content}\n\n🕒 Oras ng Post: {post_date_str}"
 
-        # Maikling snippet para sa Telegram notification
         snippet = content[:120] + "..." if len(content) > 120 else content
         telegram_notification = f"""⚡ALBAY UPDATE⚡
 May bago pong post sa page:
@@ -102,7 +100,7 @@ Para sa buong detalye, bisitahin ang website: https://albaypowertripping.oneapp.
 
         if not check_if_exists(content):
             print(f"\n[BAGONG POST NAKITA]: {post_date_str}")
-            save_to_supabase(full_card_message)
+            save_to_supabase(full_card_message, iso_post_time)
             send_telegram_alert(telegram_notification)
         else:
             print(f"Naka-save na sa database ang post na ito.")
