@@ -50,6 +50,27 @@ def save_to_supabase(advisory_text, post_datetime):
     except Exception as e:
         print(f"Supabase error: {e}")
 
+def maintain_database_limit():
+    """Tinitingnan kung lagpas 15 na ang post, at binubura ang pinakaluma."""
+    headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
+    # Kunin lahat ng ID, naka-sort sa pinakaluma (post_time ASC)
+    url = f"{SUPABASE_URL}/rest/v1/advisories?select=id&order=post_time.asc"
+    
+    try:
+        res = requests.get(url, headers=headers)
+        if res.status_code == 200:
+            data = res.json()
+            if len(data) > 15:
+                # Bilangin kung ilan ang sobra
+                excess = len(data) - 15
+                print(f"Database limit exceeded. Deleting {excess} oldest post(s)...")
+                for i in range(excess):
+                    oldest_id = data[i]['id']
+                    delete_url = f"{SUPABASE_URL}/rest/v1/advisories?id=eq.{oldest_id}"
+                    requests.delete(delete_url, headers=headers)
+    except Exception as e:
+        print(f"Error maintaining limit: {e}")
+
 def scrape_rss():
     print("Binabasa at ino-order ang RSS feed...")
     feed = feedparser.parse(RSS_URL)
@@ -94,13 +115,15 @@ May bago pong post sa page:
 
 🕒 Oras: {post_date_str}
 
-📝 Detalye: Power Advisory Tripping - Date, Time and  Affected Areas. 
+📝 Detalye: Power Advisory Tripping - Date, Time and Affected Areas. 
 
 Para sa buong detalye, bisitahin ang website: https://albaypowertripping.oneapp.dev/"""
 
         if not check_if_exists(content):
             print(f"\n[BAGONG POST NAKITA]: {post_date_str}")
             save_to_supabase(full_card_message, iso_post_time)
+            # Pagkatapos mag-save, i-run ang maintenance para mag-delete kung lagpas 15
+            maintain_database_limit()
             send_telegram_alert(telegram_notification)
         else:
             print(f"Naka-save na sa database ang post na ito.")
