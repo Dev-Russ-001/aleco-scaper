@@ -51,9 +51,8 @@ def save_to_supabase(advisory_text, post_datetime):
         print(f"Supabase error: {e}")
 
 def maintain_database_limit():
-    """Tinitingnan kung lagpas 15 na ang post, at binubura ang pinakaluma."""
+    """Sinisiguro na laging 15 posts lang ang maximum na nakalagay sa database/site."""
     headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
-    # Kunin lahat ng ID, naka-sort sa pinakaluma (post_time ASC)
     url = f"{SUPABASE_URL}/rest/v1/advisories?select=id&order=post_time.asc"
     
     try:
@@ -61,7 +60,6 @@ def maintain_database_limit():
         if res.status_code == 200:
             data = res.json()
             if len(data) > 15:
-                # Bilangin kung ilan ang sobra
                 excess = len(data) - 15
                 print(f"Database limit exceeded. Deleting {excess} oldest post(s)...")
                 for i in range(excess):
@@ -72,7 +70,7 @@ def maintain_database_limit():
         print(f"Error maintaining limit: {e}")
 
 def scrape_rss():
-    print("Binabasa at ino-order ang RSS feed...")
+    print("Binabasa ang RSS feed...")
     feed = feedparser.parse(RSS_URL)
     
     if not feed.entries:
@@ -85,9 +83,10 @@ def scrape_rss():
         reverse=True
     )
 
-    print(f"May nakitang {len(sorted_entries)} na post sa RSS feed.")
+    print(f"Sinusuri ang mga post mula sa pinakabago...")
     
-    for entry in sorted_entries[:15]:
+    new_posts = []
+    for entry in sorted_entries[:10]:
         raw_content = entry.get('description', '') or entry.get('summary', '')
         
         published_parsed = entry.get('published_parsed')
@@ -107,26 +106,39 @@ def scrape_rss():
         if not content:
             continue
 
-        full_card_message = f"{content}\n\n🕒 Oras ng Post: {post_date_str}"
+        # Kung ang post na ito ay nasa database na, hihinto na ang buong loop
+        if check_if_exists(content):
+            print(f"Naka-save na sa database ang post na ito. Humihinto na sa pag-check ng mga mas lumang post.")
+            break 
+        else:
+            full_card_message = f"{content}\n\n🕒 Oras ng Post: {post_date_str}"
+            new_posts.append({
+                'content': content,
+                'full_card_message': full_card_message,
+                'iso_post_time': iso_post_time,
+                'post_date_str': post_date_str
+            })
 
-        snippet = content[:120] + "..." if len(content) > 120 else content
-        telegram_notification = f"""⚡ALBAY UPDATE⚡
+    # Kung may mga bagong post, baligtarin natin ang pagkakasunod (reversed)
+    # para ang pinakabagong post ang huling ma-send at mapunta sa pinaka-ibaba ng Telegram chat.
+    if new_posts:
+        for post in reversed(new_posts):
+            print(f"\n[BAGONG POST NAKITA]: {post['post_date_str']}")
+            save_to_supabase(post['full_card_message'], post['iso_post_time'])
+            
+            telegram_notification = f"""⚡ALBAY UPDATE⚡
 May bago pong post sa page:
 
-🕒 Oras: {post_date_str}
+🕒 Oras: {post['post_date_str']}
 
 📝 Detalye: Power Advisory Tripping - Date, Time and Affected Areas. 
 
 Para sa buong detalye, bisitahin ang website: https://albaypowertripping.oneapp.dev/"""
 
-        if not check_if_exists(content):
-            print(f"\n[BAGONG POST NAKITA]: {post_date_str}")
-            save_to_supabase(full_card_message, iso_post_time)
-            # Pagkatapos mag-save, i-run ang maintenance para mag-delete kung lagpas 15
-            maintain_database_limit()
             send_telegram_alert(telegram_notification)
-        else:
-            print(f"Naka-save na sa database ang post na ito.")
+        
+        # Linisin ang database pagkatapos mai-save lahat ng bago para laging 15 lang
+        maintain_database_limit()
 
 if __name__ == "__main__":
     scrape_rss()
