@@ -2,7 +2,7 @@ import os
 import requests
 import feedparser
 from bs4 import BeautifulSoup
-from datetime import datetime
+from datetime import datetime, timedelta
 import urllib.parse
 
 # Supabase Credentials
@@ -44,7 +44,6 @@ def save_to_supabase(advisory_text, post_datetime):
         "Content-Type": "application/json",
         "Prefer": "return=minimal"
     }
-    # Gagamitin na ang totoong Facebook post date para sa tamang sorting sa database at site
     payload = {"substation": advisory_text, "post_time": post_datetime}
     try:
         requests.post(url, json=payload, headers=headers)
@@ -59,7 +58,6 @@ def scrape_rss():
         print("Walang nahanap na entries sa RSS feed o mali ang link.")
         return
 
-    # I-sort ang entries mula pinakabago hanggang pinakaluma base sa RSS published date
     sorted_entries = sorted(
         feed.entries, 
         key=lambda x: x.get('published_parsed', (0,0,0,0,0,0)), 
@@ -73,12 +71,14 @@ def scrape_rss():
         
         published_parsed = entry.get('published_parsed')
         if published_parsed:
-            dt = datetime(*published_parsed[:6])
+            dt_utc = datetime(*published_parsed[:6])
+            dt = dt_utc + timedelta(hours=8)
             post_date_str = dt.strftime('%B %d, %Y at %I:%M %p')
-            iso_post_time = dt.isoformat()  # Totoong oras ng pagkakapost sa FB
+            iso_post_time = dt.isoformat()
         else:
-            post_date_str = entry.get('published', datetime.now().strftime('%B %d, %Y'))
-            iso_post_time = datetime.now().isoformat()
+            dt = datetime.now()
+            post_date_str = dt.strftime('%B %d, %Y at %I:%M %p')
+            iso_post_time = dt.isoformat()
 
         soup_html = BeautifulSoup(raw_content, 'html.parser')
         content = soup_html.get_text(separator='\n').strip()
