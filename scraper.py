@@ -30,9 +30,13 @@ def get_existing_posts():
     try:
         res = requests.get(url, headers=headers)
         if res.status_code == 200:
-            return [row.get('substation', '') for row in res.json()]
+            posts = [row.get('substation', '') for row in res.json()]
+            print(f"Tagumpay na nakuha ang {len(posts)} na post mula sa Supabase database.")
+            return posts
+        else:
+            print(f"Supabase fetch error status code: {res.status_code}, response: {res.text}")
     except Exception as e:
-        print(f"Supabase fetch error: {e}")
+        print(f"Supabase fetch connection error: {e}")
     return []
 
 def save_to_supabase(advisory_text, post_datetime):
@@ -45,7 +49,9 @@ def save_to_supabase(advisory_text, post_datetime):
     }
     payload = {"substation": advisory_text, "post_time": post_datetime}
     try:
-        requests.post(url, json=payload, headers=headers)
+        res = requests.post(url, json=payload, headers=headers)
+        if res.status_code not in [200, 201]:
+            print(f"Save error response: {res.text}")
     except Exception as e:
         print(f"Supabase error: {e}")
 
@@ -76,7 +82,7 @@ def scrape_rss():
         print("Walang nahanap na entries sa RSS feed o mali ang link.")
         return
 
-    # Kunin muna ang mga kasalukuyang nakatabi sa Supabase para sa lokal na pag-check
+    # Kunin muna ang mga kasalukuyang nakatabi sa Supabase
     existing_records = get_existing_posts()
 
     # Awtomatikong inaayos mula sa pinakabago hanggang pinakaluma
@@ -109,14 +115,15 @@ def scrape_rss():
         if not content:
             continue
 
-        # Sinusuri kung ang unang 50 characters ng post ay nasa database na
-        snippet = content[:50]
+        # Kunin ang unang 30 characters para mas sigurado ang pag-match
+        snippet = content[:30]
         already_exists = any(snippet in db_text for db_text in existing_records)
 
         if already_exists:
-            print(f"Naka-save na sa database ang post na ito. Humihinto na sa pag-check.")
+            print(f"-> Naka-save na sa database (Matched: '{snippet}...'). Humihinto na sa pag-check.")
             break 
         else:
+            print(f"-> BAGONG POST NAKITA: '{snippet}...'")
             full_card_message = f"{content}\n\n🕒 Oras ng Post: {post_date_str}"
             new_posts.append({
                 'content': content,
@@ -126,8 +133,8 @@ def scrape_rss():
             })
 
     if new_posts:
+        print(f"\nMay kabuuang {len(new_posts)} bagong post ang idadagdag.")
         for post in reversed(new_posts):
-            print(f"\n[BAGONG POST NAKITA]: {post['post_date_str']}")
             save_to_supabase(post['full_card_message'], post['iso_post_time'])
             
             telegram_notification = f"""⚡ALBAY UPDATE⚡
@@ -143,7 +150,7 @@ Para sa buong detalye, bisitahin ang website: https://albaypowertripping.oneapp.
         
         maintain_database_limit()
     else:
-        print("Walang bagong post na nakita. Latest na ang lahat.")
+        print("Walang bagong post na nakita. Up-to-date na ang database.")
 
 if __name__ == "__main__":
     scrape_rss()
