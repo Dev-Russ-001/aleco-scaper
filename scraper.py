@@ -72,66 +72,70 @@ def maintain_database_limit():
 
 @app.route("/")
 def scrape_rss():
-    print("Binabasa ang FetchRSS feed...")
-    feed = feedparser.parse(RSS_URL)
-    
-    if not feed.entries:
-        return "Walang nahanap na entries.", 200
-
-    existing_times = get_existing_post_times()
-    sorted_entries = sorted(
-        feed.entries, 
-        key=lambda x: x.get('published_parsed') or (9999, 12, 31, 23, 59, 59, 0, 0, 0), 
-        reverse=True
-    )
-    
-    new_posts = []
-    for entry in sorted_entries[:15]:
-        raw_content = entry.get('description', '') or entry.get('summary', '')
-        published_parsed = entry.get('published_parsed')
+    try:
+        print("Binabasa ang FetchRSS feed...")
+        feed = feedparser.parse(RSS_URL)
         
-        if published_parsed:
-            dt = datetime(*published_parsed[:6]) + timedelta(hours=8)
-            post_date_str = dt.strftime('%B %d, %Y at %I:%M %p')
-            iso_post_time = dt.isoformat()
-        else:
-            dt = datetime.now()
-            post_date_str = dt.strftime('%B %d, %Y at %I:%M %p')
-            iso_post_time = dt.isoformat()
+        if not feed.entries:
+            return "OK", 200
 
-        soup_html = BeautifulSoup(raw_content, 'html.parser')
-        img_tag = soup_html.find('img')
-        image_url = img_tag['src'] if img_tag and img_tag.has_attr('src') else None
-        content = soup_html.get_text(separator='\n').strip()
+        existing_times = get_existing_post_times()
+        sorted_entries = sorted(
+            feed.entries, 
+            key=lambda x: x.get('published_parsed') or (9999, 12, 31, 23, 59, 59, 0, 0, 0), 
+            reverse=True
+        )
         
-        if not content and not image_url:
-            continue
+        new_posts = []
+        for entry in sorted_entries[:15]:
+            raw_content = entry.get('description', '') or entry.get('summary', '')
+            published_parsed = entry.get('published_parsed')
+            
+            if published_parsed:
+                dt = datetime(*published_parsed[:6]) + timedelta(hours=8)
+                post_date_str = dt.strftime('%B %d, %Y at %I:%M %p')
+                iso_post_time = dt.isoformat()
+            else:
+                dt = datetime.now()
+                post_date_str = dt.strftime('%B %d, %Y at %I:%M %p')
+                iso_post_time = dt.isoformat()
 
-        if iso_post_time in existing_times:
-            break 
-        else:
-            full_card_message = f"{content}\n\n🕒 Posted on: {post_date_str}"
-            new_posts.append({
-                'full_card_message': full_card_message,
-                'iso_post_time': iso_post_time,
-                'post_date_str': post_date_str,
-                'image_url': image_url
-            })
+            soup_html = BeautifulSoup(raw_content, 'html.parser')
+            img_tag = soup_html.find('img')
+            image_url = img_tag['src'] if img_tag and img_tag.has_attr('src') else None
+            content = soup_html.get_text(separator='\n').strip()
+            
+            if not content and not image_url:
+                continue
 
-    if new_posts:
-        for post in reversed(new_posts):
-            save_to_supabase(post['full_card_message'], post['iso_post_time'], post['image_url'])
-            telegram_notification = f"""⚡ALBAY UPDATE⚡
+            if iso_post_time in existing_times:
+                break 
+            else:
+                full_card_message = f"{content}\n\n🕒 Posted on: {post_date_str}"
+                new_posts.append({
+                    'full_card_message': full_card_message,
+                    'iso_post_time': iso_post_time,
+                    'post_date_str': post_date_str,
+                    'image_url': image_url
+                })
+
+        if new_posts:
+            for post in reversed(new_posts):
+                save_to_supabase(post['full_card_message'], post['iso_post_time'], post['image_url'])
+                telegram_notification = f"""⚡ALBAY UPDATE⚡
 May bago pong post sa page:
 
 🕒 Oras: {post['post_date_str']}
 📝 Detalye: Power Advisory Tripping.
 Bisitahin ang website: https://albaypowertripping.oneapp.dev/"""
-            send_telegram_alert(telegram_notification)
-        maintain_database_limit()
-        return f"Tagumpay! May {len(new_posts)} bagong post na nai-save.", 200
-    
-    return "Walang bagong post. Up-to-date na.", 200
+                send_telegram_alert(telegram_notification)
+            maintain_database_limit()
+        
+        return "OK", 200
+
+    except Exception as e:
+        print(f"Error sa scrape route: {e}")
+        return "OK", 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
