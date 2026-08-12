@@ -122,12 +122,14 @@ def scrape_rss():
         if new_posts:
             for post in reversed(new_posts):
                 save_to_supabase(post['full_card_message'], post['iso_post_time'], post['image_url'])
-                telegram_notification = f"""⚡ALBAY UPDATE⚡
-May bago pong post sa page:
+                telegram_notification = f"""⚡ALBAY POWER UPDATE⚡
+May bago pong advisory update si Aleco:
 
 🕒 Oras: {post['post_date_str']}
-📝 Detalye: Power Advisory Tripping.
-Bisitahin ang website: https://albaypowertripping.oneapp.dev/"""
+
+📝 Detalye: Aleco Power Trippings Affected Areas.
+
+Para sa buong detalye, bisitahin ang website: https://albaypowertripping.oneapp.dev/"""
                 send_telegram_alert(telegram_notification)
             maintain_database_limit()
         
