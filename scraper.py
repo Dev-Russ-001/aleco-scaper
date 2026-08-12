@@ -13,8 +13,8 @@ SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 TG_BOT_TOKEN = "8922919303:AAENx7PehTDQOoYIb2kya7L1laXDcgQtiUE"
 TG_CHAT_ID = "@AlbayPowerUpdates"
 
-# Ang iyong RSS Feed Link
-RSS_URL = "https://rss.app/feeds/XHUW4sV40A2meINV.xml"
+# Ang iyong Bagong FetchRSS Feed Link
+RSS_URL = "https://fetchrss.com/feed/1wtymnCAaBLm1wtykE9vm6U6.rss"
 
 def send_telegram_alert(formatted_message):
     url = f"https://api.telegram.org/bot{TG_BOT_TOKEN}/sendMessage"
@@ -70,13 +70,14 @@ def maintain_database_limit():
         print(f"Error maintaining limit: {e}")
 
 def scrape_rss():
-    print("Binabasa ang RSS feed...")
+    print("Binabasa ang FetchRSS feed...")
     feed = feedparser.parse(RSS_URL)
     
     if not feed.entries:
         print("Walang nahanap na entries sa RSS feed o mali ang link.")
         return
 
+    # Awtomatikong inaayos mula sa pinakabago hanggang pinakaluma base sa petsa
     sorted_entries = sorted(
         feed.entries, 
         key=lambda x: x.get('published_parsed', (0,0,0,0,0,0)), 
@@ -86,7 +87,6 @@ def scrape_rss():
     print(f"Sinusuri ang mga post mula sa pinakabago...")
     
     new_posts = []
-    # Ginawa nating 15 para masagap nito ang hanggang 15 posts kung kailangan punuin ang database
     for entry in sorted_entries[:15]:
         raw_content = entry.get('description', '') or entry.get('summary', '')
         
@@ -107,6 +107,7 @@ def scrape_rss():
         if not content:
             continue
 
+        # Kung ang post na ito ay nasa database na, titigil na agad ang pag-check
         if check_if_exists(content):
             print(f"Naka-save na sa database ang post na ito. Humihinto na sa pag-check ng mga mas lumang post.")
             break 
