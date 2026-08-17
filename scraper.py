@@ -3,9 +3,6 @@ import requests
 import feedparser
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
-from flask import Flask
-
-app = Flask(__name__)
 
 # Supabase Credentials
 SUPABASE_URL = "https://gnagimmnoutjjaifdgvq.supabase.co"
@@ -70,14 +67,13 @@ def maintain_database_limit():
     except Exception as e:
         print(f"Error maintaining limit: {e}")
 
-@app.route("/")
 def scrape_rss():
     try:
         print("Binabasa ang FetchRSS feed...")
         feed = feedparser.parse(RSS_URL)
         
         if not feed.entries:
-            return "OK", 200
+            return "OK"
 
         existing_times = get_existing_post_times()
         sorted_entries = sorted(
@@ -133,11 +129,12 @@ Para sa buong detalye, bisitahin ang website: https://albaypowertripping.oneapp.
                 send_telegram_alert(telegram_notification)
             maintain_database_limit()
         
-        return "OK", 200
+        return "OK"
 
     except Exception as e:
         print(f"Error sa scrape route: {e}")
-        return "OK", 200
+        return "OK"
 
+# Direktang tatakbo at mabilis na mamamatay para sa GitHub Actions
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    scrape_rss()
